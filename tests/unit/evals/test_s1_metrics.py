@@ -63,3 +63,11 @@ def test_gold_file_round_trip(tmp_path: Path) -> None:
     assert gold.concept_texts() == ["Gaya gesek: Melawan gerak."]
     assert gold.misconception_statements() == ["Gaya bisa habis"]
     assert gold.kind_labels == (KindLabel(4, "Gaya gesek", ChunkKind.EXPLANATION),)
+
+
+def test_unfound_restricted_labels_count_as_misses() -> None:
+    labels = [KindLabel(9, "Kunci Jawaban nomor 1", ChunkKind.ANSWER_KEY)]
+    chunks = [(4, 4, "Gaya gesek melawan gerak benda.", ChunkKind.EXPLANATION)]
+    report = kind_report(labels, chunks)
+    assert report.restricted_recall == 0.0
+    assert len(report.unmatched) == 1

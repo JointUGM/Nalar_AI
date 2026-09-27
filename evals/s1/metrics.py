@@ -45,7 +45,7 @@ def match_recall(
 @dataclass(frozen=True, slots=True)
 class KindReport:
     accuracy: float
-    restricted_recall: float  # exercise/answer_key labels predicted as a restricted kind
+    restricted_recall: float  # exercise/answer_key labels found AND predicted as restricted
     unmatched: tuple[KindLabel, ...]  # labels whose text was not found in any chunk
 
 
@@ -60,6 +60,9 @@ def kind_report(labels: Sequence[KindLabel], chunks: Sequence[ChunkRow]) -> Kind
         )
         if chunk is None:
             unmatched.append(label)
+            # An exercise or answer key the chunker never produced is a miss for the safety
+            # gate, not something to leave out of it.
+            restricted_total += label.kind in RESTRICTED
             continue
         correct += chunk[3] is label.kind
         if label.kind in RESTRICTED:
