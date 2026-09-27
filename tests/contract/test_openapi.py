@@ -20,3 +20,18 @@ def test_every_v1_operation_requires_the_service_key() -> None:
         for operation in operations.values():
             names = {parameter["name"] for parameter in operation.get("parameters", [])}
             assert "x-service-key" in names, path
+
+
+def test_every_v1_operation_documents_the_error_envelope() -> None:
+    schema = json.loads(render())
+    assert "ErrorEnvelope" in schema["components"]["schemas"]
+    assert "HTTPValidationError" not in schema["components"]["schemas"]
+    for path, operations in schema["paths"].items():
+        if not path.startswith("/v1/"):
+            continue
+        for operation in operations.values():
+            for status in ("401", "422", "500", "502", "503"):
+                ref = operation["responses"][status]["content"]["application/json"]["schema"][
+                    "$ref"
+                ]
+                assert ref.endswith("/ErrorEnvelope"), (path, status)

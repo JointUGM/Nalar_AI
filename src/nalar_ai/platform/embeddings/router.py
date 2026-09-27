@@ -5,10 +5,15 @@ from pydantic import BaseModel, Field, StringConstraints
 
 from nalar_ai.platform.embeddings.service import EmbeddingService
 from nalar_ai.platform.http.dependencies import LedgerDep, get_embedding_service
-from nalar_ai.platform.http.envelope import Envelope, envelope
+from nalar_ai.platform.http.envelope import ERROR_RESPONSES, Envelope, envelope
 from nalar_ai.platform.http.security import require_service_key
 
-router = APIRouter(prefix="/v1", tags=["embeddings"], dependencies=[Depends(require_service_key)])
+router = APIRouter(
+    prefix="/v1",
+    tags=["embeddings"],
+    dependencies=[Depends(require_service_key)],
+    responses=ERROR_RESPONSES,
+)
 
 EmbeddingTag = Literal["query", "chunk", "concept", "misconception", "cp_statement", "library"]
 EmbeddingText = Annotated[str, StringConstraints(min_length=1, max_length=30_000)]

@@ -1,4 +1,5 @@
 from collections.abc import Sequence
+from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel
@@ -70,3 +71,30 @@ def envelope[T](result: T, ledger: UsageLedger, warnings: Sequence[str] = ()) ->
         invocations=[InvocationOut.from_record(record) for record in ledger.records],
         warnings=list(warnings),
     )
+
+
+class ErrorBody(BaseModel):
+    code: str
+    message: str
+    details: dict[str, Any]
+
+
+class ErrorEnvelope(BaseModel):
+    """Every error response (design doc §12.2), with the invocations already paid for."""
+
+    error: ErrorBody
+    request_id: str | None
+    invocations: list[InvocationOut]
+
+
+ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
+    status: {"model": ErrorEnvelope, "description": description}
+    for status, description in (
+        (401, "unauthorized: missing or invalid X-Service-Key"),
+        (413, "payload_too_large"),
+        (422, "invalid_input, document_unreadable, section_too_large or budget_exceeded"),
+        (500, "internal_error"),
+        (502, "ai_output_invalid or model_call_rejected"),
+        (503, "upstream_unavailable"),
+    )
+}

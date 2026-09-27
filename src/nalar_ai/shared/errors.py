@@ -13,6 +13,11 @@ class NalarAIError(Exception):
         self.details: dict[str, Any] = details or {}
 
 
+class UnauthorizedError(NalarAIError):
+    code = "unauthorized"
+    status_code = 401
+
+
 class InvalidInputError(NalarAIError):
     code = "invalid_input"
     status_code = 422

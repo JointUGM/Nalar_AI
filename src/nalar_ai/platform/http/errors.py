@@ -2,6 +2,7 @@ import logging
 from typing import Any
 
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from nalar_ai.platform.http.envelope import InvocationOut
@@ -37,6 +38,16 @@ def register_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(NalarAIError)
     async def handle_nalar_error(request: Request, exc: NalarAIError) -> JSONResponse:
         return error_response(request, exc.status_code, exc.code, exc.message, exc.details)
+
+    @app.exception_handler(RequestValidationError)
+    async def handle_validation(request: Request, exc: RequestValidationError) -> JSONResponse:
+        errors = [
+            {"loc": [str(part) for part in error.get("loc", ())], "msg": str(error.get("msg", ""))}
+            for error in exc.errors()
+        ]
+        return error_response(
+            request, 422, "invalid_input", "request validation failed", {"errors": errors}
+        )
 
     @app.exception_handler(Exception)
     async def handle_unexpected(request: Request, exc: Exception) -> JSONResponse:
