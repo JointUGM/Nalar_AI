@@ -6,6 +6,8 @@ from pydantic import SecretStr
 
 from nalar_ai.container import Container, build_container
 from nalar_ai.main import create_app
+from nalar_ai.platform.embeddings.fakes import HashingEmbedder
+from nalar_ai.platform.llm.fakes import ScriptedLLM
 from nalar_ai.settings import Settings
 from tests.support.auth import SERVICE_KEY
 
@@ -17,8 +19,18 @@ def settings() -> Settings:
 
 
 @pytest.fixture
-def container(settings: Settings) -> Container:
-    return build_container(settings)
+def llm() -> ScriptedLLM:
+    return ScriptedLLM()
+
+
+@pytest.fixture
+def embedder() -> HashingEmbedder:
+    return HashingEmbedder()
+
+
+@pytest.fixture
+def container(settings: Settings, llm: ScriptedLLM, embedder: HashingEmbedder) -> Container:
+    return build_container(settings, llm_port=llm, embedding_port=embedder)
 
 
 @pytest.fixture

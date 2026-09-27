@@ -1,9 +1,14 @@
-from typing import Annotated, Any, cast
+from typing import TYPE_CHECKING, Annotated, Any, cast
 
 from fastapi import Depends, Request
 
 from nalar_ai.settings import Settings
 from nalar_ai.shared.provenance import UsageLedger
+
+if TYPE_CHECKING:
+    from nalar_ai.platform.embeddings.service import EmbeddingService
+    from nalar_ai.platform.llm.gateway import LLMGateway
+    from nalar_ai.platform.tokens import TokenCounter
 
 
 def app_container(request: Request) -> Any:
@@ -13,6 +18,18 @@ def app_container(request: Request) -> Any:
 
 def get_settings_dep(request: Request) -> Settings:
     return cast(Settings, app_container(request).settings)
+
+
+def get_embedding_service(request: Request) -> "EmbeddingService":
+    return cast("EmbeddingService", app_container(request).embeddings)
+
+
+def get_llm_gateway(request: Request) -> "LLMGateway":
+    return cast("LLMGateway", app_container(request).llm)
+
+
+def get_token_counter(request: Request) -> "TokenCounter":
+    return cast("TokenCounter", app_container(request).tokens)
 
 
 def get_ledger(request: Request) -> UsageLedger:
