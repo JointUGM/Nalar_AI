@@ -12,6 +12,7 @@ from nalar_ai.platform.http.errors import register_error_handlers
 from nalar_ai.platform.http.health import router as health_router
 from nalar_ai.platform.http.middleware import RequestIdMiddleware
 from nalar_ai.settings import get_settings
+from nalar_ai.subsystems.s1_knowledge_base.api.router import router as s1_router
 
 
 @asynccontextmanager
@@ -33,4 +34,5 @@ def create_app(container: Container | None = None) -> FastAPI:
     register_error_handlers(app)
     app.include_router(health_router)
     app.include_router(embeddings_router)
+    app.include_router(s1_router)
     return app

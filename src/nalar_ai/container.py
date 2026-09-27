@@ -14,8 +14,9 @@ from nalar_ai.platform.prompts.registry import PromptRegistry
 from nalar_ai.platform.tokens import TokenCounter
 from nalar_ai.settings import Settings
 from nalar_ai.shared.enums import ModelTier
+from nalar_ai.subsystems.s1_knowledge_base.module import S1Module, build_s1_module
 
-# Every subsystem registers its prompt directory here (Task 14 adds S1).
+# Every subsystem registers its prompt directory here (Task 16 adds S1).
 PROMPT_DIRECTORIES: tuple[Path, ...] = ()
 
 Closer = Callable[[], Awaitable[None]]
@@ -30,6 +31,7 @@ class Container:
     llm: LLMGateway
     embeddings: EmbeddingService
     tokens: TokenCounter
+    s1: S1Module
     closers: tuple[Closer, ...] = field(default=())
 
     async def aclose(self) -> None:
@@ -75,6 +77,7 @@ def build_container(
         llm=llm,
         embeddings=embeddings,
         tokens=TokenCounter(),
+        s1=build_s1_module(settings),
         closers=tuple(closers),
     )
 
