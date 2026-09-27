@@ -55,8 +55,7 @@ known-first-party = ["nalar_ai", "tests", "scripts", "evals"]
 [tool.mypy]
 python_version = "3.12"
 strict = true
-# Task 21 adds "evals" once that folder exists.
-files = ["src", "tests", "scripts"]
+files = ["src", "tests", "scripts", "evals"]
 plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
