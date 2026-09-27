@@ -136,6 +136,14 @@ class LLMGateway:
                         )
                     )
                     raise
+                except Exception as exc:  # an odd payload must not drop the attempt's record
+                    detail = f"unexpected provider error: {exc!r}"
+                    ledger.add(
+                        self._record(
+                            template, request.model, LLMUsage(), started, ledger, retrieval, detail
+                        )
+                    )
+                    raise PermanentLLMError(detail) from exc
                 ledger.add(
                     self._record(
                         template, request.model, response.usage, started, ledger, retrieval

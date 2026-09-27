@@ -50,12 +50,15 @@ class OpenAICompatEmbedder:
             raise TransientEmbeddingError(f"{status}: {response.text[:200]}")
         if status >= 400:
             raise PermanentEmbeddingError(f"{status}: {response.text[:200]}")
-        payload = response.json()
-        rows = sorted(payload["data"], key=lambda row: int(row["index"]))
-        return EmbeddingBatch(
-            vectors=[[float(value) for value in row["embedding"]] for row in rows],
-            total_tokens=int(payload.get("usage", {}).get("total_tokens", 0)),
-        )
+        try:
+            payload = response.json()
+            rows = sorted(payload["data"], key=lambda row: int(row["index"]))
+            return EmbeddingBatch(
+                vectors=[[float(value) for value in row["embedding"]] for row in rows],
+                total_tokens=int(payload.get("usage", {}).get("total_tokens", 0)),
+            )
+        except (ValueError, KeyError, TypeError, AttributeError) as exc:
+            raise PermanentEmbeddingError(f"malformed embeddings response: {exc!r}") from exc
 
     async def aclose(self) -> None:
         await self._client.aclose()

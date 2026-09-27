@@ -78,6 +78,10 @@ class EmbeddingService:
             except (TransientEmbeddingError, PermanentEmbeddingError) as exc:
                 ledger.add(self._record(tag, 0, started, ledger, str(exc)))
                 raise
+            except Exception as exc:  # an odd payload must not drop the attempt's record
+                detail = f"unexpected embedding error: {exc!r}"
+                ledger.add(self._record(tag, 0, started, ledger, detail))
+                raise PermanentEmbeddingError(detail) from exc
             ledger.add(self._record(tag, result.total_tokens, started, ledger))
             return result
 

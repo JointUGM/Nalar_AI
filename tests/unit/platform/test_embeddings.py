@@ -16,6 +16,7 @@ from nalar_ai.platform.embeddings.service import EmbeddingService
 from nalar_ai.shared.enums import AiPurpose, CallStatus
 from nalar_ai.shared.errors import (
     InvalidInputError,
+    ModelCallRejectedError,
     OutputValidationError,
     UpstreamUnavailableError,
 )
@@ -138,3 +139,27 @@ async def test_exhausted_retries_raise_upstream_unavailable() -> None:
     service = EmbeddingService(_Flaky(9), model=MODEL, dimensions=1536, sleep=_no_sleep)
     with pytest.raises(UpstreamUnavailableError):
         await service.embed(["a"], tag="query", ledger=UsageLedger("r", 1.0))
+
+
+@respx.mock
+async def test_openai_compat_rejects_a_malformed_success_payload() -> None:
+    respx.post(f"{BASE}/embeddings").mock(
+        return_value=httpx.Response(200, text="<html>oops</html>")
+    )
+    async with httpx.AsyncClient() as client:
+        embedder = OpenAICompatEmbedder(client, base_url=BASE, api_key="k")
+        with pytest.raises(PermanentEmbeddingError, match="malformed"):
+            await embedder.embed(["a"], model=MODEL, dimensions=2)
+
+
+class _Broken:
+    async def embed(self, texts: Sequence[str], *, model: str, dimensions: int) -> EmbeddingBatch:
+        raise ValueError("unexpected shape")
+
+
+async def test_unexpected_embedding_errors_are_recorded_and_rejected() -> None:
+    service = EmbeddingService(_Broken(), model=MODEL, dimensions=1536)
+    ledger = UsageLedger("r", 1.0)
+    with pytest.raises(ModelCallRejectedError):
+        await service.embed(["a"], tag="chunk", ledger=ledger)
+    assert [r.status for r in ledger.records] == [CallStatus.ERROR]

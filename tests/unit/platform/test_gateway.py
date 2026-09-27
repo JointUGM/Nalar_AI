@@ -180,3 +180,14 @@ def test_models_without_a_price_are_rejected_at_startup() -> None:
             prompts=PromptRegistry([]),
             models={**MODELS, ModelTier.FAST: "mystery-model"},
         )
+
+
+async def test_unexpected_port_errors_are_recorded_and_rejected() -> None:
+    llm = ScriptedLLM([RuntimeError("odd provider payload")])
+    gateway, _ = _gateway(llm)
+    ledger = UsageLedger("r", 1.0)
+    with pytest.raises(ModelCallRejectedError):
+        await _generate(gateway, ledger)
+    (record,) = ledger.records
+    assert record.status is CallStatus.ERROR
+    assert "odd provider payload" in (record.error_message or "")
