@@ -1,4 +1,3 @@
-import asyncio
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Literal
@@ -12,6 +11,7 @@ from nalar_ai.shared.enums import RetrievalPath, RetrievalSource
 from nalar_ai.shared.errors import InvalidInputError
 from nalar_ai.shared.provenance import RetrievalRef, UsageLedger
 from nalar_ai.shared.text import fence_untrusted
+from nalar_ai.subsystems.s1_knowledge_base.application.batch import gather_settled
 from nalar_ai.subsystems.s1_knowledge_base.domain.dedup_policy import (
     Candidate,
     DedupBasis,
@@ -54,7 +54,7 @@ class DedupeConceptsUseCase:
         keys = [item.key for item in items]
         if len(set(keys)) != len(keys):
             raise InvalidInputError("item keys must be unique")
-        return list(await asyncio.gather(*(self._decide(item, ledger) for item in items)))
+        return await gather_settled(self._decide(item, ledger) for item in items)
 
     async def _decide(self, item: DedupItem, ledger: UsageLedger) -> DedupDecision:
         policy = decide(item.name, item.candidates, self._thresholds)

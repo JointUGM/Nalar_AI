@@ -2,7 +2,7 @@ import json
 import uuid
 
 from nalar_ai.platform.llm.fakes import ScriptedLLM
-from nalar_ai.platform.llm.ports import LLMRequest
+from nalar_ai.platform.llm.ports import LLMRequest, PermanentLLMError
 from nalar_ai.shared.enums import AiPurpose, ChunkKind, RetrievalSource
 from nalar_ai.shared.provenance import UsageLedger
 from nalar_ai.subsystems.s1_knowledge_base.application.generate_misconceptions import (
@@ -140,3 +140,20 @@ async def test_concept_without_usable_sources_fails_alone() -> None:
     )
     assert result.misconceptions == [] and result.failed[0].concept_ref == "n9"
     assert llm.requests == []
+
+
+async def test_a_refused_concept_goes_to_failed_instead_of_failing_the_batch() -> None:
+    def route(request: LLMRequest) -> str | BaseException:
+        if "Tekanan zat" in " ".join(block.text for block in request.blocks):
+            return PermanentLLMError("the model refused the request")
+        return _route(request)
+
+    command = GenerateMisconceptionsCommand(
+        "IPA",
+        "D",
+        CHUNKS,
+        (_concept("n1", "Gaya gesek", (A,)), _concept("n2", "Tekanan zat", (C,))),
+    )
+    result = await _use_case(ScriptedLLM(route=route)).execute(command, UsageLedger("r", 1.0))
+    assert {m.concept_ref for m in result.misconceptions} == {"n1"}
+    assert [f.concept_ref for f in result.failed] == ["n2"]

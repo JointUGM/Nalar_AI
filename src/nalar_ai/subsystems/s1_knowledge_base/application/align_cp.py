@@ -1,6 +1,5 @@
 """CP alignment (design doc §10.4): Haiku picks one CP statement among retrieved candidates."""
 
-import asyncio
 from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import StrEnum
@@ -13,6 +12,7 @@ from nalar_ai.shared.aliases import AliasMap
 from nalar_ai.shared.enums import RetrievalPath, RetrievalSource
 from nalar_ai.shared.provenance import RetrievalRef, UsageLedger
 from nalar_ai.shared.text import fence_untrusted
+from nalar_ai.subsystems.s1_knowledge_base.application.batch import gather_settled
 
 MAX_CANDIDATES = 5
 
@@ -61,7 +61,7 @@ class AlignCpUseCase:
         self._min_similarity = min_similarity
 
     async def execute(self, items: Sequence[AlignItem], ledger: UsageLedger) -> list[CpAlignment]:
-        return list(await asyncio.gather(*(self._align(item, ledger) for item in items)))
+        return await gather_settled(self._align(item, ledger) for item in items)
 
     async def _align(self, item: AlignItem, ledger: UsageLedger) -> CpAlignment:
         candidates = sorted(item.candidates, key=lambda c: (-c.similarity, str(c.outcome_id)))

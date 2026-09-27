@@ -11,7 +11,11 @@ from nalar_ai.platform.embeddings.service import EmbeddingService
 from nalar_ai.platform.llm.gateway import LLMGateway
 from nalar_ai.shared.aliases import AliasMap
 from nalar_ai.shared.enums import RetrievalPath, RetrievalSource
-from nalar_ai.shared.errors import InvalidInputError, OutputValidationError
+from nalar_ai.shared.errors import (
+    InvalidInputError,
+    ModelCallRejectedError,
+    OutputValidationError,
+)
 from nalar_ai.shared.provenance import RetrievalRef, UsageLedger
 from nalar_ai.shared.text import fence_untrusted, normalize_key
 from nalar_ai.shared.vectors import cosine
@@ -178,7 +182,11 @@ class GenerateMisconceptionsUseCase:
         dropped: list[DroppedItem] = []
         failed: list[FailedConcept] = []
         for concept, outcome in zip(command.concepts, outcomes, strict=True):
-            if isinstance(outcome, OutputValidationError | InvalidInputError):
+            # Per-concept problems (invalid output, no sources, a refusal) fail only that concept;
+            # provider outages and the budget cap fail the request.
+            if isinstance(
+                outcome, OutputValidationError | InvalidInputError | ModelCallRejectedError
+            ):
                 failed.append(FailedConcept(concept.concept_ref, outcome.message))
             elif isinstance(outcome, BaseException):
                 raise outcome  # provider down or budget exceeded: the whole request fails
