@@ -7,6 +7,8 @@
 #   block   -> region ends at the next heading at the same or a higher level, or a large gap
 #   section -> region ends only at the next heading at a higher level (restrictive kinds persist)
 #
+# exercise/answer_key also match non-bold titled lines; `other` matches whole titles only.
+#
 # `explanation` is the default kind and has no markers.
 version: 1
 kinds:
@@ -56,4 +58,19 @@ kinds:
     markers: ["tahukah kamu", "info", "info sains", "sekilas info", "jendela ilmu", "fakta sains", "wawasan", "ingat", "catatan"]
   other:
     scope: section
-    markers: ["daftar pustaka", "glosarium", "indeks", "kata pengantar", "daftar isi", "refleksi", "profil penulis"]
+    # Matched only as whole titles (optionally numbered): "Indeks Bias" stays physics.
+    markers:
+      - "daftar pustaka"
+      - "glosarium"
+      - "indeks"
+      - "kata pengantar"
+      - "prakata"
+      - "daftar isi"
+      - "daftar gambar"
+      - "daftar tabel"
+      - "petunjuk penggunaan buku"
+      - "refleksi"
+      - "profil penulis"
+      - "profil pelaku perbukuan"
+      - "lampiran"
+      - "sampul"

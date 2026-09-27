@@ -69,3 +69,39 @@ def test_generation_kinds_never_include_restricted_kinds() -> None:
 def test_explanation_cannot_have_markers() -> None:
     with pytest.raises(ValueError, match="default"):
         KindLexicon.build(1, [KindMarker(ChunkKind.EXPLANATION, RegionScope.BLOCK, "Materi")])
+
+
+@pytest.mark.parametrize(
+    ("line", "kind"),
+    [
+        ("Uji Kompetensi Bab 1 Gaya dan Gerak", ChunkKind.EXERCISE),
+        ("Kunci Jawaban Uji Kompetensi", ChunkKind.ANSWER_KEY),
+        ("Latihan Soal Gaya", ChunkKind.EXERCISE),
+    ],
+)
+def test_restrictive_markers_match_titled_lines_even_when_not_bold(
+    line: str, kind: ChunkKind
+) -> None:
+    marker = LEXICON.match(line, bold=False)
+    assert marker is not None and marker.kind is kind
+
+
+@pytest.mark.parametrize("line", ["Indeks Bias", "Refleksi Cahaya", "Indeks Bias Cahaya pada Kaca"])
+def test_back_matter_markers_do_not_swallow_physics_headings(line: str) -> None:
+    assert LEXICON.match(line, bold=True) is None
+
+
+@pytest.mark.parametrize(
+    "title",
+    [
+        "Prakata",
+        "Petunjuk Penggunaan Buku",
+        "Daftar Gambar",
+        "Daftar Tabel",
+        "Lampiran",
+        "Sampul",
+        "Profil Pelaku Perbukuan",
+    ],
+)
+def test_common_bse_front_and_back_matter_is_recognised(title: str) -> None:
+    assert LEXICON.is_front_or_back_matter(title)

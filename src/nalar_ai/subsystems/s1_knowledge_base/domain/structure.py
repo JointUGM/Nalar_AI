@@ -11,7 +11,12 @@ from nalar_ai.subsystems.s1_knowledge_base.domain.headings import (
     HeadingDetector,
     HeadingPolicy,
 )
-from nalar_ai.subsystems.s1_knowledge_base.domain.kinds import KindLexicon, KindMarker, RegionScope
+from nalar_ai.subsystems.s1_knowledge_base.domain.kinds import (
+    RESTRICTED_KINDS,
+    KindLexicon,
+    KindMarker,
+    RegionScope,
+)
 from nalar_ai.subsystems.s1_knowledge_base.domain.layout import join_lines, reading_order
 from nalar_ai.subsystems.s1_knowledge_base.domain.models import PageContent, TextLine
 
@@ -131,12 +136,16 @@ class _Builder:
         level = self._detector.level(line)
         if marker is not None:
             self._flush()
-            region_level = min(
-                level if level is not None else self._deepest() + 1, MAX_HEADING_LEVEL
-            )
+            if level is None:
+                # A section-scoped marker that is not styled as a heading sits at the current
+                # depth, so sibling sub-headings ("A. Pilihan Ganda") cannot close it.
+                deepest = self._deepest()
+                level = max(deepest, 1) if marker.scope is RegionScope.SECTION else deepest + 1
+            region_level = min(level, MAX_HEADING_LEVEL)
             self._push(region_level, text)
-            self._region = (region_level, marker)
-            self._region_has_body = False
+            if not self._keeps_restrictive_region(marker, region_level):
+                self._region = (region_level, marker)
+                self._region_has_body = False
         elif level is not None:
             self._flush()
             if not self._echoes_root(text):
@@ -180,6 +189,18 @@ class _Builder:
         if abs(line.font_size - last.font_size) > 0.5 or _BULLET.match(line.text.strip()):
             return True
         return line.y0 - last.y1 > self._policy.paragraph_gap_ratio * self._detector.body_size
+
+    def _keeps_restrictive_region(self, marker: KindMarker, level: int) -> bool:
+        """A nested non-restrictive marker ("Aktivitas 1.1", "Ingat") inside an exercise or
+        answer-key region never lowers its kind; only a higher-level heading ends it."""
+        if self._region is None:
+            return False
+        region_level, region_marker = self._region
+        return (
+            region_marker.kind in RESTRICTED_KINDS
+            and marker.kind not in RESTRICTED_KINDS
+            and level >= region_level
+        )
 
     def _close_region_for_heading(self, level: int) -> None:
         if self._region is None:

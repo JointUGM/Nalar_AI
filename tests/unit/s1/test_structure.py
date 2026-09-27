@@ -184,3 +184,43 @@ def test_title_matching() -> None:
     assert title_matches("Tekanan Zat", "Bab 2 Tekanan Zat")
     assert not title_matches("Bab 1", "Bab 10 Listrik")
     assert not title_matches("Zat", "Bab 2 Tekanan Zat")
+
+
+def test_nested_block_marker_inside_answer_key_keeps_answer_key() -> None:
+    page = make_page(
+        1,
+        [
+            L("Kunci Jawaban", bold=True),
+            L("Aktivitas 1.1", bold=True, gap=6),
+            "Jawaban: bola berhenti karena gaya gesek.",
+        ],
+    )
+    assert [p.kind for p in _paragraphs([page])] == [K]
+
+
+def test_sidebar_marker_inside_exercise_keeps_exercise_after_the_gap() -> None:
+    page = make_page(
+        1,
+        [
+            L("Uji Kompetensi", bold=True),
+            "1. Apa yang dimaksud dengan gaya?",
+            L("Ingat", bold=True, gap=6),
+            "2. Apa yang dimaksud dengan gesekan?",
+            L("3. Mengapa bola yang ditendang berhenti?", gap=40),
+        ],
+    )
+    assert [p.kind for p in _paragraphs([page])] == [X, X, X]
+
+
+def test_plain_exercise_marker_survives_bold_subheadings() -> None:
+    page = make_page(
+        1,
+        [
+            L("Gaya Gesek", bold=True),
+            "Penjelasan tentang gaya gesek.",
+            L("Latihan 1.2", gap=12),
+            L("A. Pilihan Ganda", bold=True, gap=6),
+            "1. Benda diam tidak memiliki gaya, benar atau salah?",
+        ],
+    )
+    assert [p.kind for p in _paragraphs([page])] == [E, X]

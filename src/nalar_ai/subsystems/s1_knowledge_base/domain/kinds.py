@@ -20,6 +20,9 @@ GENERATION_KINDS: frozenset[ChunkKind] = frozenset(
     }
 )
 
+# Leak-critical kinds: generation never sees them, and they are never downgraded.
+RESTRICTED_KINDS: frozenset[ChunkKind] = frozenset({ChunkKind.EXERCISE, ChunkKind.ANSWER_KEY})
+
 MAX_MARKER_WORDS = 8
 _NUMBERING = re.compile(r"(bab )?[\divxlc]+( [\divxlc]+)*")
 
@@ -58,7 +61,14 @@ class KindLexicon:
                 return marker
             if key.startswith(marker.marker + " "):
                 rest = key[len(marker.marker) + 1 :]
-                if bold or _NUMBERING.fullmatch(rest):
+                numbered = bool(_NUMBERING.fullmatch(rest))
+                if marker.kind is ChunkKind.OTHER:
+                    matched = numbered  # "Indeks Bias" is physics, not an index
+                else:
+                    # Restrictive kinds match titled lines too ("Uji Kompetensi Bab 1 Gaya"):
+                    # over-restricting is recoverable, leaking an answer key is not.
+                    matched = bold or numbered or marker.kind in RESTRICTED_KINDS
+                if matched:
                     return marker
         return None
 
