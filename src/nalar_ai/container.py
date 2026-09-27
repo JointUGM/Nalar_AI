@@ -14,10 +14,11 @@ from nalar_ai.platform.prompts.registry import PromptRegistry
 from nalar_ai.platform.tokens import TokenCounter
 from nalar_ai.settings import Settings
 from nalar_ai.shared.enums import ModelTier
+from nalar_ai.subsystems.s1_knowledge_base.module import PROMPTS_DIR as S1_PROMPTS_DIR
 from nalar_ai.subsystems.s1_knowledge_base.module import S1Module, build_s1_module
 
-# Every subsystem registers its prompt directory here (Task 16 adds S1).
-PROMPT_DIRECTORIES: tuple[Path, ...] = ()
+# Every subsystem registers its prompt directory here.
+PROMPT_DIRECTORIES: tuple[Path, ...] = (S1_PROMPTS_DIR,)
 
 Closer = Callable[[], Awaitable[None]]
 
