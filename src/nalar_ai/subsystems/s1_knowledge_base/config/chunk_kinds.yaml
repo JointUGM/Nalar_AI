@@ -1,0 +1,76 @@
+# Textbook markers → chunk kinds (design doc §7.4). Edited by the pedagogy lead.
+# A marker matches a short line (<= 8 words) whose text equals the marker, or starts with it
+# followed by numbering ("Contoh Soal 1.2", "Uji Kompetensi Bab 1"), or any words if the line is bold.
+# Matching ignores case and punctuation. The longest marker wins.
+#
+# scope:
+#   block   -> region ends at the next heading at the same or a higher level, or a large gap
+#   section -> region ends only at the next heading at a higher level (restrictive kinds persist)
+#
+# exercise/answer_key also match non-bold titled lines; `other` matches whole titles only.
+#
+# `explanation` is the default kind and has no markers.
+version: 1
+kinds:
+  answer_key:
+    scope: section
+    markers: ["kunci jawaban", "kunci jawaban dan pembahasan", "pembahasan soal"]
+  exercise:
+    scope: section
+    markers:
+      - "uji kompetensi"
+      - "latihan"
+      - "latihan soal"
+      - "soal latihan"
+      - "ayo berlatih"
+      - "ayo kita berlatih"
+      - "mari berlatih"
+      - "evaluasi"
+      - "asesmen"
+      - "uji pemahaman"
+      - "tes formatif"
+      - "penilaian"
+      - "tugas"
+  summary:
+    scope: section
+    markers: ["rangkuman", "ringkasan", "kesimpulan", "intisari"]
+  activity:
+    scope: block
+    markers:
+      - "ayo kita lakukan"
+      - "ayo lakukan"
+      - "ayo kita coba"
+      - "ayo mencoba"
+      - "mari mencoba"
+      - "aktivitas"
+      - "kegiatan"
+      - "percobaan"
+      - "eksperimen"
+      - "ayo kita selidiki"
+      - "ayo kita pikirkan"
+      - "ayo kita diskusikan"
+      - "proyek"
+  example:
+    scope: block
+    markers: ["contoh", "contoh soal", "contoh penerapan"]
+  sidebar:
+    scope: block
+    markers: ["tahukah kamu", "info", "info sains", "sekilas info", "jendela ilmu", "fakta sains", "wawasan", "ingat", "catatan"]
+  other:
+    scope: section
+    # Matched only as whole titles (optionally numbered): "Indeks Bias" stays physics.
+    markers:
+      - "daftar pustaka"
+      - "glosarium"
+      - "indeks"
+      - "kata pengantar"
+      - "prakata"
+      - "daftar isi"
+      - "daftar gambar"
+      - "daftar tabel"
+      - "petunjuk penggunaan buku"
+      - "refleksi"
+      - "profil penulis"
+      - "profil pelaku perbukuan"
+      - "lampiran"
+      - "sampul"

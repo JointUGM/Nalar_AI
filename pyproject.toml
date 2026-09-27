@@ -1,0 +1,97 @@
+[project]
+name = "nalar-ai"
+version = "0.1.0"
+description = "NALAR stateless AI service (S1-S5): knowledge base builder, mission designer, prober, evaluator, insights"
+requires-python = ">=3.12"
+license = { file = "LICENSE" }
+dependencies = [
+    "anthropic>=1.8",
+    "anyio>=4.6",
+    "fastapi>=0.115",
+    "httpx>=0.28",
+    "pydantic>=2.10",
+    "pydantic-settings>=2.6",
+    "pymupdf>=1.25",
+    "python-multipart>=0.0.18",
+    "pyyaml>=6.0",
+    "tiktoken>=0.8",
+    "uvicorn[standard]>=0.32",
+]
+
+[dependency-groups]
+dev = [
+    "import-linter>=2.1",
+    "mypy>=1.14",
+    "pytest>=8.3",
+    "pytest-asyncio>=0.25",
+    "respx>=0.22",
+    "ruff>=0.8",
+    "types-pyyaml>=6.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/nalar_ai"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests", "evals", "scripts"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF", "ASYNC", "S"]
+# E501: `ruff format` owns line length; long string literals are allowed.
+ignore = ["E501", "S101", "RUF001", "RUF002", "RUF003"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S105", "S106"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["nalar_ai", "tests", "scripts", "evals"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["src", "tests", "scripts", "evals"]
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+# PyMuPDF's partial annotations trip strict mode; treat it as untyped (Any) at the boundary.
+module = ["pymupdf", "pymupdf.*", "tiktoken", "tiktoken.*"]
+ignore_missing_imports = true
+follow_imports = "skip"
+
+[[tool.mypy.overrides]]
+module = ["tests.*"]
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--import-mode=importlib -q"
+pythonpath = ["."]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+
+[tool.importlinter]
+root_packages = ["nalar_ai"]
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "S1 layers"
+type = "layers"
+layers = [
+    "nalar_ai.subsystems.s1_knowledge_base.api",
+    "nalar_ai.subsystems.s1_knowledge_base.infrastructure",
+    "nalar_ai.subsystems.s1_knowledge_base.application",
+    "nalar_ai.subsystems.s1_knowledge_base.domain",
+]
+
+[[tool.importlinter.contracts]]
+name = "Pure core"
+type = "forbidden"
+source_modules = ["nalar_ai.shared", "nalar_ai.subsystems.s1_knowledge_base.domain"]
+forbidden_modules = ["fastapi", "httpx", "anthropic", "pymupdf", "tiktoken", "yaml", "nalar_ai.platform"]
