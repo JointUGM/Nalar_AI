@@ -4,13 +4,18 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from starlette.formparsers import MultiPartParser
 
 from nalar_ai import __version__
 from nalar_ai.container import Container, build_container
 from nalar_ai.platform.embeddings.router import router as embeddings_router
 from nalar_ai.platform.http.errors import register_error_handlers
 from nalar_ai.platform.http.health import router as health_router
-from nalar_ai.platform.http.middleware import RequestIdMiddleware
+from nalar_ai.platform.http.middleware import (
+    MULTIPART_SLACK_BYTES,
+    BodySizeLimitMiddleware,
+    RequestIdMiddleware,
+)
 from nalar_ai.settings import get_settings
 from nalar_ai.subsystems.s1_knowledge_base.api.router import router as s1_router
 
@@ -30,7 +35,12 @@ def create_app(container: Container | None = None) -> FastAPI:
         lifespan=_lifespan,
     )
     app.state.container = container
-    app.add_middleware(RequestIdMiddleware)
+    max_body_bytes = container.settings.max_upload_bytes + MULTIPART_SLACK_BYTES
+    # Teacher material stays in memory (design doc §15): never spool uploads to temp files.
+    # Process-wide Starlette setting; the body limit below bounds the memory it can take.
+    MultiPartParser.spool_max_size = max_body_bytes
+    app.add_middleware(BodySizeLimitMiddleware, max_body_bytes=max_body_bytes)
+    app.add_middleware(RequestIdMiddleware)  # added last = outermost, so request_id is set first
     register_error_handlers(app)
     app.include_router(health_router)
     app.include_router(embeddings_router)
