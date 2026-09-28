@@ -7,6 +7,7 @@ tool call.
 """
 
 import json
+from collections.abc import Mapping
 from typing import Any
 
 import httpx
@@ -28,20 +29,29 @@ _REFUSALS = frozenset({"content_filter", "refusal"})
 _TOOL = "output"
 
 
-def _part(block: UserBlock) -> dict[str, Any]:
+def _is_claude(model: str) -> bool:
+    return model.startswith("claude")
+
+
+def _part(block: UserBlock, *, claude: bool) -> dict[str, Any]:
     part: dict[str, Any] = {"type": "text", "text": block.text}
-    if block.cache:
+    if block.cache and claude:
+        # Claude-only: some OpenAI models reject it with a 400 (DECISIONS M2); the other
+        # providers cache repeated prefixes on their own.
         part["cache_control"] = dict(_EPHEMERAL)
     return part
 
 
-def build_chat_body(request: LLMRequest) -> dict[str, Any]:
+def build_chat_body(request: LLMRequest, params: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    """`params` are extra request fields for this model (settings.llm_model_params)."""
+    claude = _is_claude(request.model)
+    system = UserBlock(request.system, cache=True)
     body: dict[str, Any] = {
         "model": request.model,
         "max_tokens": request.max_tokens,
         "messages": [
-            {"role": "system", "content": [_part(UserBlock(request.system, cache=True))]},
-            {"role": "user", "content": [_part(block) for block in request.blocks]},
+            {"role": "system", "content": [_part(system, claude=claude)]},
+            {"role": "user", "content": [_part(block, claude=claude) for block in request.blocks]},
         ],
     }
     if request.json_schema is not None:
@@ -54,10 +64,11 @@ def build_chat_body(request: LLMRequest) -> dict[str, Any]:
             }
         ]
         body["tool_choice"] = {"type": "function", "function": {"name": _TOOL}}
-    if request.effort is not None:
+    if request.effort is not None and claude:
         # ponytail: SumoPod currently drops this silently (Haiku accepts it; DECISIONS P7).
         # Sent in the native shape so it takes effect if the proxy starts passing it on.
         body["output_config"] = {"effort": request.effort}
+    body.update(params or {})
     return body
 
 
@@ -130,10 +141,18 @@ def fill_missing_nulls(
 
 
 class OpenAIChatAdapter:
-    def __init__(self, client: httpx.AsyncClient, *, base_url: str, api_key: str) -> None:
+    def __init__(
+        self,
+        client: httpx.AsyncClient,
+        *,
+        base_url: str,
+        api_key: str,
+        model_params: Mapping[str, Mapping[str, Any]] | None = None,
+    ) -> None:
         self._client = client
         self._url = f"{base_url.rstrip('/')}/chat/completions"
         self._api_key = api_key
+        self._model_params = dict(model_params or {})
 
     @classmethod
     def from_settings(cls, settings: Settings) -> "OpenAIChatAdapter":
@@ -143,6 +162,7 @@ class OpenAIChatAdapter:
             httpx.AsyncClient(timeout=settings.llm_timeout_seconds),
             base_url=settings.sumopod_openai_base_url,
             api_key=settings.sumopod_api_key.get_secret_value(),
+            model_params=settings.llm_model_params,
         )
 
     async def complete(self, request: LLMRequest) -> LLMResponse:
@@ -150,7 +170,7 @@ class OpenAIChatAdapter:
             response = await self._client.post(
                 self._url,
                 headers={"Authorization": f"Bearer {self._api_key}"},
-                json=build_chat_body(request),
+                json=build_chat_body(request, self._model_params.get(request.model)),
             )
         except httpx.TransportError as exc:  # includes timeouts
             raise TransientLLMError(f"connection error: {exc}") from exc

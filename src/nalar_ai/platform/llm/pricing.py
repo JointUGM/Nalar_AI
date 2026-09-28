@@ -26,6 +26,11 @@ LLM_PRICES: Mapping[str, ModelPrice] = {
     "claude-haiku-4-5": ModelPrice(1.0, 0.10, 5.0),
     "claude-sonnet-5": ModelPrice(2.0, 0.20, 10.0),
     "claude-opus-5": ModelPrice(5.0, 0.50, 25.0),
+    # Benchmarked 2026-09-28 (DECISIONS M3-M7). These providers cache implicitly and list no
+    # write surcharge. qwen3.8-max is at its 50%-off price ($2 / $6 list): re-check before use.
+    "gpt-5.4-mini": ModelPrice(0.75, 0.075, 4.5, cache_write_multiplier=1.0),
+    "gpt-5.4": ModelPrice(2.5, 0.25, 15.0, cache_write_multiplier=1.0),
+    "qwen3.8-max": ModelPrice(1.0, 0.125, 3.0, cache_write_multiplier=1.0),
 }
 
 EMBEDDING_PRICES_PER_MTOK: Mapping[str, float] = {"text-embedding-3-small": 0.02}

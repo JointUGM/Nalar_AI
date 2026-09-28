@@ -1,5 +1,5 @@
 from functools import lru_cache
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -23,9 +23,14 @@ class Settings(BaseSettings):
     sumopod_openai_base_url: str = ""
     structured_output: Literal["native", "prompt"] = "native"
 
-    model_fast: str = "claude-haiku-4-5"
+    # Tiers from the 2026-09-28 benchmark (DECISIONS M3-M6). Quality stays on Sonnet 5 until a
+    # cheaper scorer passes the S4 gate on hand-scored sessions.
+    model_fast: str = "gpt-5.4-mini"
     model_quality: str = "claude-sonnet-5"
-    model_judge: str = "claude-opus-5"
+    model_judge: str = "qwen3.8-max"
+    # Extra request fields per model, e.g. switching thinking off where a forced tool call
+    # needs it (DECISIONS M1). JSON in NALAR_AI_LLM_MODEL_PARAMS.
+    llm_model_params: dict[str, dict[str, Any]] = {"qwen3.8-max": {"enable_thinking": False}}
     embedding_model: str = "text-embedding-3-small"
     embedding_dimensions: int = 1536
 
