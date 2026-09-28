@@ -35,8 +35,14 @@ def contains_stem(text_key: str, phrase_key: str) -> bool:
     """Like contains_phrase, but each word may carry affixes: "gesekannya" and "bergesekan"
     both contain "gesekan". For answer terms, where blocking too much is safe and missing
     an Indonesian affixed form is a leak."""
+    return bool(stem_spans(text_key, phrase_key))
+
+
+def stem_spans(text_key: str, phrase_key: str) -> list[str]:
+    """Every whole-word form in text_key that carries phrase_key, as contains_stem matches it
+    ("bergesekan" for "gesekan"; also "harus" for "arus": a stem match is not proof of use)."""
     words = phrase_key.split()
     if not words:
-        return False
+        return []
     pattern = r"(?<!\S)" + r"\s+".join(rf"\S*{re.escape(word)}\S*" for word in words) + r"(?!\S)"
-    return re.search(pattern, text_key) is not None
+    return [match.group(0) for match in re.finditer(pattern, text_key)]

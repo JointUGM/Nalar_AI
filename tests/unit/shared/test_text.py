@@ -4,6 +4,7 @@ from nalar_ai.shared.text import (
     fence_untrusted,
     normalize_key,
     normalize_text,
+    stem_spans,
 )
 
 
@@ -41,3 +42,9 @@ def test_contains_stem_accepts_affixes_on_each_word() -> None:
     assert not contains_stem("hukum itu newton", "hukum newton")
     assert not contains_stem("gesek", "gesekan")
     assert not contains_stem("apa saja", "")
+
+
+def test_stem_spans_returns_each_whole_word_form_that_carries_the_term() -> None:
+    assert stem_spans("ada gesekannya dan bergesekan", "gesekan") == ["gesekannya", "bergesekan"]
+    assert stem_spans("lampunya harus nyala", "arus") == ["harus"]
+    assert stem_spans("tidak ada", "arus") == []
