@@ -9,7 +9,7 @@ from uuid import UUID
 
 from nalar_ai.platform.llm.fakes import Reply, ScriptedLLM
 from nalar_ai.platform.llm.gateway import LLMGateway
-from nalar_ai.platform.llm.ports import LLMRequest, PermanentLLMError
+from nalar_ai.platform.llm.ports import LLMPort, LLMRequest, PermanentLLMError
 from nalar_ai.platform.prompts.registry import PromptRegistry
 from nalar_ai.shared.enums import ProbeStrategy as M
 from nalar_ai.subsystems.s3_socratic_prober.domain.moves import AnswerType
@@ -228,7 +228,7 @@ def probe(
     )
 
 
-def make_gateway(llm: ScriptedLLM) -> LLMGateway:
+def make_gateway(llm: LLMPort) -> LLMGateway:
     return LLMGateway(
         port=llm, prompts=PromptRegistry.from_directories([PROMPTS_DIR]), models=MODELS
     )

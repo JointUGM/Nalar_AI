@@ -1,9 +1,10 @@
+import asyncio
 from dataclasses import replace
 
 import pytest
 
 from nalar_ai.platform.llm.fakes import ScriptedLLM
-from nalar_ai.platform.llm.ports import TransientLLMError
+from nalar_ai.platform.llm.ports import LLMRequest, LLMResponse, TransientLLMError
 from nalar_ai.shared.enums import (
     AiPurpose,
     GuardResult,
@@ -205,12 +206,51 @@ async def test_a_blocked_adaptation_shows_the_chosen_question_verbatim() -> None
     assert result.probe.move_source is MoveSource.PLANNER
 
 
-async def test_table_mode_reports_the_default_source() -> None:
+async def test_table_mode_shows_the_default_question_verbatim_without_a_writer_call() -> None:
+    # Sonnet via SumoPod cannot write within the turn budget (DECISIONS P9), so table
+    # mode, the latency fallback (design R-S3-1), makes no writer call at all.
     llm = by_prompt(classify=[classify_reply()], choose=[choose_reply()])
-    result, _ = await _run(llm, mode=PlannerMode.TABLE)
+    result, ledger = await _run(llm, mode=PlannerMode.TABLE)
     assert result.probe is not None
     assert result.probe.allowed_moves == (M.COUNTER_EXAMPLE,)
+    assert result.probe.move is M.COUNTER_EXAMPLE
     assert result.probe.move_source is MoveSource.DEFAULT
+    assert result.probe.reason_code is MoveReasonCode.DEFAULT
+    assert result.probe.question_text == question(T_LEMBAM, M.COUNTER_EXAMPLE).text
+    assert result.probe.question_source is QuestionSource.APPROVED
+    assert result.probe.guard_result is GuardResult.NOT_RUN
+    assert [r.purpose for r in ledger.records] == [AiPurpose.TURN_ANALYZE]
+
+
+class _SlowLLM:
+    """Answers correctly, but only after `delay_s`."""
+
+    def __init__(self, inner: ScriptedLLM, delay_s: float) -> None:
+        self._inner, self._delay_s = inner, delay_s
+
+    async def complete(self, request: LLMRequest) -> LLMResponse:
+        await asyncio.sleep(self._delay_s)
+        return await self._inner.complete(request)
+
+
+@pytest.mark.parametrize(
+    ("mode", "source"),
+    [
+        (PlannerMode.HYBRID, ClassificationSource.FALLBACK),
+        (PlannerMode.TABLE, ClassificationSource.MODEL),
+    ],
+)
+async def test_table_mode_gives_classify_the_whole_turn_budget(
+    mode: PlannerMode, source: ClassificationSource
+) -> None:
+    policy = replace(POLICY, turn_budget_s=1.0, classify_timeout_s=0.1, min_step_s=0.05)
+    llm = _SlowLLM(by_prompt(classify=[classify_reply()], choose=[choose_reply()]), 0.3)
+    ledger = UsageLedger("req-s3", 1.0)
+    use_case = NextTurnUseCase(
+        llm=make_gateway(llm), embeddings=make_embeddings(), config=CONFIG, policy=policy
+    )
+    result = await use_case.execute(NextTurnCommand(make_pack(), FIRST, mode, 60), ledger)
+    assert result.classification.source is source
 
 
 async def test_a_spent_budget_skips_every_model_call() -> None:

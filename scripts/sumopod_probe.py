@@ -7,11 +7,12 @@ Run: uv run python scripts/sumopod_probe.py
 import asyncio
 import statistics
 import time
+from typing import Any
 
 from pydantic import BaseModel
 
+from nalar_ai.container import _default_llm_port
 from nalar_ai.platform.embeddings.openai_compat import OpenAICompatEmbedder
-from nalar_ai.platform.llm.anthropic_adapter import AnthropicMessagesAdapter
 from nalar_ai.platform.llm.ports import LLMRequest, UserBlock
 from nalar_ai.platform.llm.schema import strict_json_schema
 from nalar_ai.settings import get_settings
@@ -28,7 +29,8 @@ class _Answer(BaseModel):
 
 async def main() -> None:
     settings = get_settings()
-    llm = AnthropicMessagesAdapter.from_settings(settings)
+    closers: list[Any] = []
+    llm = _default_llm_port(settings, closers)  # NALAR_AI_SUMOPOD_API picks the route
     embedder = OpenAICompatEmbedder.from_settings(settings)
     results: list[tuple[str, bool, str]] = []
 
@@ -156,7 +158,8 @@ async def main() -> None:
         except Exception as exc:
             results.append(("embeddings", False, repr(exc)))
     finally:
-        await llm.aclose()
+        for close in closers:
+            await close()
         await embedder.aclose()
 
     for name, ok, detail in results:

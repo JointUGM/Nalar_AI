@@ -152,8 +152,14 @@ class NextTurnUseCase:
         if hit is not None:
             classification = Classification.from_prefilter(hit)
         else:
+            # Table mode makes no writer call, so classify may use the whole turn budget.
+            classify_limit_s = (
+                self._policy.turn_budget_s
+                if command.mode is PlannerMode.TABLE
+                else self._policy.classify_timeout_s
+            )
             classification = await self._classify.execute(
-                pack, view, ledger, timeout_s=deadline.step(self._policy.classify_timeout_s)
+                pack, view, ledger, timeout_s=deadline.step(classify_limit_s)
             )
             if classification.source is ClassificationSource.FALLBACK:
                 warnings.append("classification_fallback")
@@ -216,6 +222,10 @@ class NextTurnUseCase:
     ) -> ProbeDecision:
         if classification.source is ClassificationSource.PREFILTER:
             return self._verbatim(plan, classification, MoveSource.PREFILTER)
+        if command.mode is PlannerMode.TABLE:
+            # Table mode is the latency fallback (design R-S3-1): the approved default
+            # question verbatim, no writer call (Sonnet misses the budget, DECISIONS P9).
+            return self._verbatim(plan, classification, MoveSource.DEFAULT)
         choice = await self._choose.execute(
             command.pack.writer_view(),
             view,
@@ -238,7 +248,7 @@ class NextTurnUseCase:
             logger.info("s3 choice rejected request_id=%s: %s", ledger.request_id, checked.problem)
             return self._verbatim(plan, classification, MoveSource.FALLBACK_INVALID)
 
-        source = self._move_source(command.mode, plan)
+        source = self._move_source(plan)
         reason = (
             checked.reason
             if checked.reason_code is not MoveReasonCode.DEFAULT
@@ -301,9 +311,7 @@ class NextTurnUseCase:
         )
 
     @staticmethod
-    def _move_source(mode: PlannerMode, plan: MovePlan) -> MoveSource:
-        if mode is PlannerMode.TABLE:
-            return MoveSource.DEFAULT
+    def _move_source(plan: MovePlan) -> MoveSource:
         if len(plan.allowed_moves) == 1:
             return MoveSource.FIXED_RULE
         return MoveSource.PLANNER
