@@ -9,6 +9,7 @@ from nalar_ai.platform.embeddings.service import EmbeddingService
 from nalar_ai.platform.llm.anthropic_adapter import AnthropicMessagesAdapter
 from nalar_ai.platform.llm.fakes import ScriptedLLM
 from nalar_ai.platform.llm.gateway import LLMGateway
+from nalar_ai.platform.llm.openai_chat_adapter import OpenAIChatAdapter
 from nalar_ai.platform.llm.ports import LLMPort
 from nalar_ai.platform.prompts.registry import PromptRegistry
 from nalar_ai.platform.tokens import TokenCounter
@@ -98,7 +99,11 @@ def build_container(
 def _default_llm_port(settings: Settings, closers: list[Closer]) -> LLMPort:
     if settings.llm_provider == "fake":
         return ScriptedLLM()
-    adapter = AnthropicMessagesAdapter.from_settings(settings)
+    adapter: OpenAIChatAdapter | AnthropicMessagesAdapter = (
+        OpenAIChatAdapter.from_settings(settings)
+        if settings.sumopod_api == "chat"
+        else AnthropicMessagesAdapter.from_settings(settings)
+    )
     closers.append(adapter.aclose)
     return adapter
 

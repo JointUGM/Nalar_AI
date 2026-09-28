@@ -17,6 +17,8 @@ class Settings(BaseSettings):
 
     llm_provider: Literal["sumopod", "fake"] = "sumopod"
     sumopod_api_key: SecretStr = SecretStr("")
+    # chat: /chat/completions (works); messages: /anthropic (404s today, DECISIONS P2)
+    sumopod_api: Literal["chat", "messages"] = "chat"
     sumopod_messages_base_url: str = ""
     sumopod_openai_base_url: str = ""
     structured_output: Literal["native", "prompt"] = "native"
