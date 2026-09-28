@@ -113,6 +113,28 @@ async def test_live_calls_never_queue_behind_batch_calls() -> None:
     assert await batch == Echo(word="halo")
 
 
+async def test_scoring_calls_never_queue_behind_batch_or_live_calls() -> None:
+    port = GatedLLM()
+    gateway = LLMGateway(
+        port=port,
+        prompts=PromptRegistry([parse_prompt(PROMPT)]),
+        models=MODELS,
+        concurrency=1,
+        live_concurrency=1,
+        scoring_concurrency=1,
+    )
+    ledger = UsageLedger("r", 1.0)
+    held = [
+        asyncio.create_task(_generate(gateway, ledger, "wait", CallPolicy(lane=lane)))
+        for lane in ("batch", "live")
+    ]
+    await asyncio.sleep(0)  # the batch and live calls now hold their only slots
+    scoring = CallPolicy(timeout_s=1.0, max_attempts=1, max_repairs=0, lane="scoring")
+    assert await _generate(gateway, ledger, "go", scoring) == Echo(word="halo")
+    port.release.set()
+    assert [await task for task in held] == [Echo(word="halo")] * 2
+
+
 def test_effort_on_a_model_that_rejects_it_fails_at_startup() -> None:
     with pytest.raises(ConfigurationError, match="rejects effort"):
         LLMGateway(

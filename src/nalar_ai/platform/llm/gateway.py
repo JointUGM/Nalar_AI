@@ -38,7 +38,7 @@ _MAX_ECHOED_OUTPUT_CHARS = 20_000
 # Models whose API rejects `output_config.effort` (Haiku 4.5 returns 400).
 MODELS_WITHOUT_EFFORT = frozenset({"claude-haiku-4-5"})
 
-Lane = Literal["batch", "live"]
+Lane = Literal["batch", "live", "scoring"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -47,7 +47,7 @@ class CallPolicy:
 
     timeout_s: per attempt, including the wait for a concurrency slot; None = no deadline.
     max_attempts: None = the gateway default. max_repairs: repair calls for invalid output.
-    lane: live calls never queue behind batch calls.
+    lane: live (S3) and scoring (S4) calls never queue behind batch calls or each other.
     """
 
     timeout_s: float | None = None
@@ -70,6 +70,7 @@ class LLMGateway:
         max_attempts: int = 3,
         concurrency: int = 4,
         live_concurrency: int = 32,
+        scoring_concurrency: int = 16,
         base_delay_s: float = 0.5,
         provider: str = "sumopod",
         clock: Callable[[], float] = time.perf_counter,
@@ -93,6 +94,7 @@ class LLMGateway:
         self._semaphores: dict[Lane, asyncio.Semaphore] = {
             "batch": asyncio.Semaphore(concurrency),
             "live": asyncio.Semaphore(live_concurrency),
+            "scoring": asyncio.Semaphore(scoring_concurrency),
         }
         self._base_delay_s = base_delay_s
         self._provider = provider
