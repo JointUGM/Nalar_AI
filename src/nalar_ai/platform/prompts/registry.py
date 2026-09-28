@@ -4,7 +4,7 @@ Format:
     ---
     id: s1.extract_concepts
     version: 1
-    purpose: kb_extract          # ai_purpose label
+    purpose: kb_extract          # ai_purpose label (or an eval_* label for offline evals)
     tier: quality                # fast | quality | judge
     max_tokens: 16000
     effort: high                 # optional; never on the fast tier (Haiku 4.5 rejects it)
@@ -26,7 +26,7 @@ from typing import Any
 
 import yaml
 
-from nalar_ai.shared.enums import AiPurpose, ModelTier
+from nalar_ai.shared.enums import AiPurpose, EvalPurpose, ModelTier, Purpose
 from nalar_ai.shared.errors import ConfigurationError
 
 _FRONT_MATTER = re.compile(r"\A---\n(.*?)\n---\n", re.DOTALL)
@@ -51,7 +51,7 @@ class RenderedPrompt:
 class PromptTemplate:
     id: str
     version: int
-    purpose: AiPurpose
+    purpose: Purpose
     tier: ModelTier
     max_tokens: int
     effort: str | None
@@ -110,7 +110,7 @@ def parse_prompt(text: str) -> PromptTemplate:
     return PromptTemplate(
         id=prompt_id,
         version=int(meta["version"]),
-        purpose=AiPurpose(meta["purpose"]),
+        purpose=_purpose(str(meta["purpose"])),
         tier=tier,
         max_tokens=int(meta["max_tokens"]),
         effort=effort,
@@ -119,6 +119,10 @@ def parse_prompt(text: str) -> PromptTemplate:
         task=sections["task"],
         sha256=hashlib.sha256(text.encode("utf-8")).hexdigest(),
     )
+
+
+def _purpose(value: str) -> Purpose:
+    return EvalPurpose(value) if value.startswith("eval_") else AiPurpose(value)
 
 
 class PromptRegistry:
@@ -152,3 +156,11 @@ class PromptRegistry:
 
     def ids(self) -> list[str]:
         return sorted(self._templates)
+
+    def templates(self) -> list[PromptTemplate]:
+        """Every loaded version of every prompt, ordered by id then version."""
+        return [
+            versions[version]
+            for _, versions in sorted(self._templates.items())
+            for version in sorted(versions)
+        ]

@@ -36,6 +36,8 @@ class InvocationOut(BaseModel):
 
     @classmethod
     def from_record(cls, record: InvocationRecord) -> "InvocationOut":
+        if not isinstance(record.purpose, AiPurpose):
+            raise ValueError(f"{record.purpose} is eval-only and never leaves the service")
         return cls(
             purpose=record.purpose,
             model=record.model,
