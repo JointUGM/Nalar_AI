@@ -1,0 +1,51 @@
+# S4 reflection guard and fallback (design doc §9). Owned by the pedagogy lead.
+# Bump `version` on every change; the loader rejects a template that fails the guard.
+version: 1
+
+reflection:
+  max_words: 120
+  # Judging words (whole-word match). Starts from the S3 prober's list.
+  verdict_terms:
+    - benar
+    - betul
+    - salah
+    - keliru
+    - tepat
+    - tepat sekali
+    - kurang tepat
+    - yang benar adalah
+    - jawabannya adalah
+    - bagus
+    - hebat
+    - pintar
+    - pinter
+    - mantap
+    - sudah benar
+    - hampir benar
+    - hampir
+    - iya betul
+    - bukan begitu
+    - coba lagi
+    - coba pikir lagi
+    - sip
+    - keren
+    - nah itu
+  # Scores and integrity (affixed forms match too: "nilainya", "menyontek").
+  banned_terms:
+    - nilai
+    - skor
+    - poin
+    - peringkat
+    - curang
+    - menyontek
+    - mencontek
+    - nyontek
+    - salin
+    - copas
+    - tempel
+    - chatgpt
+    - kecerdasan buatan
+  template:
+    strengths: Kamu sudah mau menjelaskan pikiranmu dengan kata-katamu sendiri.
+    changed_mind: Dalam percakapan tadi, kamu memikirkan pertanyaan dari beberapa sisi.
+    question: Apa satu hal dari percakapan tadi yang ingin kamu cari tahu lebih jauh?
