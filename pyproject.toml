@@ -91,7 +91,29 @@ layers = [
 ]
 
 [[tool.importlinter.contracts]]
+name = "S3 layers"
+type = "layers"
+layers = [
+    "nalar_ai.subsystems.s3_socratic_prober.api",
+    "nalar_ai.subsystems.s3_socratic_prober.infrastructure",
+    "nalar_ai.subsystems.s3_socratic_prober.application",
+    "nalar_ai.subsystems.s3_socratic_prober.domain",
+]
+
+[[tool.importlinter.contracts]]
+name = "Independent subsystems"
+type = "independence"
+modules = [
+    "nalar_ai.subsystems.s1_knowledge_base",
+    "nalar_ai.subsystems.s3_socratic_prober",
+]
+
+[[tool.importlinter.contracts]]
 name = "Pure core"
 type = "forbidden"
-source_modules = ["nalar_ai.shared", "nalar_ai.subsystems.s1_knowledge_base.domain"]
+source_modules = [
+    "nalar_ai.shared",
+    "nalar_ai.subsystems.s1_knowledge_base.domain",
+    "nalar_ai.subsystems.s3_socratic_prober.domain",
+]
 forbidden_modules = ["fastapi", "httpx", "anthropic", "pymupdf", "tiktoken", "yaml", "nalar_ai.platform"]
