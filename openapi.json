@@ -7,7 +7,9 @@
           "kb_misconceptions",
           "cp_align",
           "kb_dedup",
-          "embedding"
+          "embedding",
+          "turn_analyze",
+          "probe_plan"
         ],
         "title": "AiPurpose",
         "type": "string"
@@ -80,6 +82,126 @@
           "name"
         ],
         "title": "AlignItemIn",
+        "type": "object"
+      },
+      "AnalysisOut": {
+        "description": "The latest answer: answer_state, misconceptions and frustration for its turn row.",
+        "properties": {
+          "answer_type": {
+            "$ref": "#/components/schemas/AnswerType"
+          },
+          "frustration": {
+            "title": "Frustration",
+            "type": "boolean"
+          },
+          "key_phrase": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Key Phrase"
+          },
+          "misconception_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Misconception Id"
+          },
+          "secondary_misconception_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Secondary Misconception Id"
+          },
+          "source": {
+            "$ref": "#/components/schemas/ClassificationSource"
+          }
+        },
+        "required": [
+          "answer_type",
+          "source",
+          "misconception_id",
+          "secondary_misconception_id",
+          "frustration",
+          "key_phrase"
+        ],
+        "title": "AnalysisOut",
+        "type": "object"
+      },
+      "AnswerType": {
+        "description": "The prober's label for one answer. The backend maps it onto answer_state (Q-S3-1).",
+        "enum": [
+          "correct_reasoned",
+          "correct_unreasoned",
+          "misconception",
+          "mixed",
+          "evasive",
+          "manipulation",
+          "unsure",
+          "safety"
+        ],
+        "title": "AnswerType",
+        "type": "string"
+      },
+      "BankQuestionIn": {
+        "properties": {
+          "concept_id": {
+            "format": "uuid",
+            "title": "Concept Id",
+            "type": "string"
+          },
+          "id": {
+            "description": "Stored as question_bank_id",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "misconception_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Misconception Id"
+          },
+          "move": {
+            "$ref": "#/components/schemas/ProbeStrategy"
+          },
+          "text": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "concept_id",
+          "move",
+          "text"
+        ],
+        "title": "BankQuestionIn",
         "type": "object"
       },
       "Body_chunk_section_v1_s1_sections_chunk_post": {
@@ -320,6 +442,15 @@
         "title": "ChunkSectionOut",
         "type": "object"
       },
+      "ClassificationSource": {
+        "enum": [
+          "prefilter",
+          "model",
+          "fallback"
+        ],
+        "title": "ClassificationSource",
+        "type": "string"
+      },
       "ConceptDraftOut": {
         "properties": {
           "description": {
@@ -430,6 +561,110 @@
           "source_chunk_ids"
         ],
         "title": "ConceptForMisconceptionsIn",
+        "type": "object"
+      },
+      "ContextPackIn": {
+        "description": "The frozen mission package, written before publication and sent on every turn.",
+        "properties": {
+          "anchor_problem": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Anchor Problem",
+            "type": "string"
+          },
+          "answer_terms": {
+            "items": {
+              "maxLength": 100,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "Answer Terms",
+            "type": "array"
+          },
+          "max_duration_minutes": {
+            "maximum": 60.0,
+            "minimum": 1.0,
+            "title": "Max Duration Minutes",
+            "type": "integer"
+          },
+          "max_probes": {
+            "description": "mission_versions.max_turns",
+            "maximum": 10.0,
+            "minimum": 1.0,
+            "title": "Max Probes",
+            "type": "integer"
+          },
+          "misconceptions": {
+            "items": {
+              "$ref": "#/components/schemas/MisconceptionIn"
+            },
+            "maxItems": 30,
+            "title": "Misconceptions",
+            "type": "array"
+          },
+          "pack_version": {
+            "const": 1,
+            "title": "Pack Version",
+            "type": "integer"
+          },
+          "question_bank": {
+            "items": {
+              "$ref": "#/components/schemas/BankQuestionIn"
+            },
+            "maxItems": 200,
+            "minItems": 1,
+            "title": "Question Bank",
+            "type": "array"
+          },
+          "reference_reasoning": {
+            "description": "Hidden model answer; never sent to the writer",
+            "maxLength": 8000,
+            "minLength": 1,
+            "title": "Reference Reasoning",
+            "type": "string"
+          },
+          "targets": {
+            "items": {
+              "$ref": "#/components/schemas/TargetConceptIn"
+            },
+            "maxItems": 5,
+            "minItems": 1,
+            "title": "Targets",
+            "type": "array"
+          }
+        },
+        "required": [
+          "pack_version",
+          "anchor_problem",
+          "reference_reasoning",
+          "max_probes",
+          "max_duration_minutes",
+          "targets",
+          "question_bank",
+          "answer_terms"
+        ],
+        "title": "ContextPackIn",
+        "type": "object"
+      },
+      "CoverageOut": {
+        "properties": {
+          "challenged": {
+            "title": "Challenged",
+            "type": "boolean"
+          },
+          "concept_id": {
+            "format": "uuid",
+            "title": "Concept Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "concept_id",
+          "challenged"
+        ],
+        "title": "CoverageOut",
         "type": "object"
       },
       "CpAlignmentOut": {
@@ -772,6 +1007,15 @@
         "title": "EmbedOut",
         "type": "object"
       },
+      "EndReason": {
+        "enum": [
+          "coverage_complete",
+          "turn_limit",
+          "time_limit"
+        ],
+        "title": "EndReason",
+        "type": "string"
+      },
       "Envelope_AlignCpOut_": {
         "properties": {
           "invocations": {
@@ -966,6 +1210,62 @@
           "warnings"
         ],
         "title": "Envelope[GenerateMisconceptionsOut]",
+        "type": "object"
+      },
+      "Envelope_NextTurnOut_": {
+        "properties": {
+          "invocations": {
+            "items": {
+              "$ref": "#/components/schemas/InvocationOut"
+            },
+            "title": "Invocations",
+            "type": "array"
+          },
+          "result": {
+            "$ref": "#/components/schemas/NextTurnOut"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "result",
+          "invocations",
+          "warnings"
+        ],
+        "title": "Envelope[NextTurnOut]",
+        "type": "object"
+      },
+      "Envelope_WarmOut_": {
+        "properties": {
+          "invocations": {
+            "items": {
+              "$ref": "#/components/schemas/InvocationOut"
+            },
+            "title": "Invocations",
+            "type": "array"
+          },
+          "result": {
+            "$ref": "#/components/schemas/WarmOut"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "result",
+          "invocations",
+          "warnings"
+        ],
+        "title": "Envelope[WarmOut]",
         "type": "object"
       },
       "ErrorBody": {
@@ -1272,6 +1572,19 @@
         "title": "GenerateMisconceptionsOut",
         "type": "object"
       },
+      "GuardResult": {
+        "enum": [
+          "passed",
+          "blocked_shape",
+          "blocked_verdict",
+          "blocked_new_terms",
+          "blocked_similarity",
+          "blocked_drift",
+          "not_run"
+        ],
+        "title": "GuardResult",
+        "type": "string"
+      },
       "HealthOut": {
         "properties": {
           "service": {
@@ -1294,6 +1607,95 @@
           "version"
         ],
         "title": "HealthOut",
+        "type": "object"
+      },
+      "HistoryTurnIn": {
+        "description": "One stored session_turns row with its prober trace. The last turn holds the new answer.",
+        "properties": {
+          "answer_text": {
+            "maxLength": 20000,
+            "title": "Answer Text",
+            "type": "string"
+          },
+          "answer_type": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AnswerType"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The stored analysis; null for the latest answer"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/TurnKind"
+          },
+          "misconception_ids": {
+            "description": "detected_misconception_id, then secondary_misconception_id",
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 2,
+            "title": "Misconception Ids",
+            "type": "array"
+          },
+          "move": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProbeStrategy"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "prompt_strategy"
+          },
+          "question_bank_id": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Question Bank Id"
+          },
+          "question_text": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Question Text",
+            "type": "string"
+          },
+          "target_concept_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Concept Id"
+          },
+          "turn_index": {
+            "maximum": 50.0,
+            "minimum": 0.0,
+            "title": "Turn Index",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "turn_index",
+          "kind",
+          "question_text",
+          "answer_text"
+        ],
+        "title": "HistoryTurnIn",
         "type": "object"
       },
       "InvocationOut": {
@@ -1434,6 +1836,43 @@
         "title": "LibraryCandidateIn",
         "type": "object"
       },
+      "MisconceptionIn": {
+        "properties": {
+          "concept_id": {
+            "format": "uuid",
+            "title": "Concept Id",
+            "type": "string"
+          },
+          "detection_cues": {
+            "items": {
+              "maxLength": 300,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Detection Cues",
+            "type": "array"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "statement": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Statement",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "concept_id",
+          "statement"
+        ],
+        "title": "MisconceptionIn",
+        "type": "object"
+      },
       "MisconceptionOut": {
         "properties": {
           "concept_ref": {
@@ -1503,6 +1942,131 @@
         "title": "MisconceptionOut",
         "type": "object"
       },
+      "MoveReasonCode": {
+        "enum": [
+          "default",
+          "mixed_answer",
+          "second_wrong_idea",
+          "no_change_after_example",
+          "frustration",
+          "already_covered",
+          "check_deeper"
+        ],
+        "title": "MoveReasonCode",
+        "type": "string"
+      },
+      "MoveSource": {
+        "enum": [
+          "planner",
+          "default",
+          "fixed_rule",
+          "prefilter",
+          "fallback_invalid",
+          "fallback_error"
+        ],
+        "title": "MoveSource",
+        "type": "string"
+      },
+      "NextTurnIn": {
+        "properties": {
+          "context_pack": {
+            "$ref": "#/components/schemas/ContextPackIn"
+          },
+          "elapsed_seconds": {
+            "maximum": 86400.0,
+            "minimum": 0.0,
+            "title": "Elapsed Seconds",
+            "type": "integer"
+          },
+          "history": {
+            "items": {
+              "$ref": "#/components/schemas/HistoryTurnIn"
+            },
+            "maxItems": 30,
+            "minItems": 1,
+            "title": "History",
+            "type": "array"
+          },
+          "planner_mode": {
+            "$ref": "#/components/schemas/PlannerMode",
+            "description": "publication_runs.planner_mode"
+          }
+        },
+        "required": [
+          "planner_mode",
+          "context_pack",
+          "history",
+          "elapsed_seconds"
+        ],
+        "title": "NextTurnIn",
+        "type": "object"
+      },
+      "NextTurnOut": {
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/TurnAction"
+          },
+          "analysis": {
+            "$ref": "#/components/schemas/AnalysisOut"
+          },
+          "coverage": {
+            "items": {
+              "$ref": "#/components/schemas/CoverageOut"
+            },
+            "title": "Coverage",
+            "type": "array"
+          },
+          "end_reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EndReason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "probe": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProbeOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "safety_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Safety Message"
+          }
+        },
+        "required": [
+          "action",
+          "analysis",
+          "probe",
+          "end_reason",
+          "safety_message",
+          "coverage"
+        ],
+        "title": "NextTurnOut",
+        "type": "object"
+      },
+      "PlannerMode": {
+        "enum": [
+          "table",
+          "hybrid"
+        ],
+        "title": "PlannerMode",
+        "type": "string"
+      },
       "PrerequisiteEdgeIn": {
         "properties": {
           "concept_id": {
@@ -1522,6 +2086,87 @@
         ],
         "title": "PrerequisiteEdgeIn",
         "type": "object"
+      },
+      "ProbeOut": {
+        "description": "The next session_turns row.",
+        "properties": {
+          "allowed_moves": {
+            "items": {
+              "$ref": "#/components/schemas/ProbeStrategy"
+            },
+            "title": "Allowed Moves",
+            "type": "array"
+          },
+          "guard_result": {
+            "$ref": "#/components/schemas/GuardResult"
+          },
+          "move": {
+            "$ref": "#/components/schemas/ProbeStrategy"
+          },
+          "move_source": {
+            "$ref": "#/components/schemas/MoveSource"
+          },
+          "question_bank_id": {
+            "title": "Question Bank Id",
+            "type": "string"
+          },
+          "question_source": {
+            "$ref": "#/components/schemas/QuestionSource"
+          },
+          "question_text": {
+            "title": "Question Text",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "reason_code": {
+            "$ref": "#/components/schemas/MoveReasonCode"
+          },
+          "target_concept_id": {
+            "format": "uuid",
+            "title": "Target Concept Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "move",
+          "allowed_moves",
+          "target_concept_id",
+          "question_bank_id",
+          "question_text",
+          "question_source",
+          "move_source",
+          "reason_code",
+          "reason",
+          "guard_result"
+        ],
+        "title": "ProbeOut",
+        "type": "object"
+      },
+      "ProbeStrategy": {
+        "description": "probe_strategy: the five NALAR-Schema.sql labels plus three from migration 002.",
+        "enum": [
+          "transfer",
+          "request_justification",
+          "counter_example",
+          "decompose",
+          "refuse_and_redirect",
+          "deeper_reason",
+          "explain_mechanism",
+          "simpler_reason"
+        ],
+        "title": "ProbeStrategy",
+        "type": "string"
+      },
+      "QuestionSource": {
+        "enum": [
+          "adapted",
+          "approved"
+        ],
+        "title": "QuestionSource",
+        "type": "string"
       },
       "RejectedConceptIn": {
         "properties": {
@@ -1672,6 +2317,75 @@
           "reason"
         ],
         "title": "SkippedPageOut",
+        "type": "object"
+      },
+      "TargetConceptIn": {
+        "properties": {
+          "description": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Description",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "TargetConceptIn",
+        "type": "object"
+      },
+      "TurnAction": {
+        "enum": [
+          "probe",
+          "end",
+          "safety_pause"
+        ],
+        "title": "TurnAction",
+        "type": "string"
+      },
+      "TurnKind": {
+        "enum": [
+          "anchor",
+          "probe"
+        ],
+        "title": "TurnKind",
+        "type": "string"
+      },
+      "WarmIn": {
+        "properties": {
+          "context_pack": {
+            "$ref": "#/components/schemas/ContextPackIn"
+          }
+        },
+        "required": [
+          "context_pack"
+        ],
+        "title": "WarmIn",
+        "type": "object"
+      },
+      "WarmOut": {
+        "properties": {
+          "warmed": {
+            "title": "Warmed",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "warmed"
+        ],
+        "title": "WarmOut",
         "type": "object"
       }
     }
@@ -2471,6 +3185,226 @@
         "summary": "Detect Sections",
         "tags": [
           "s1"
+        ]
+      }
+    },
+    "/v1/s3/runs/warm": {
+      "post": {
+        "description": "Warm the prompt cache when the teacher starts a run (TC-7). Call it once per run.\n\nA failed warm-up is not an error: the run works without it, only the first turns are\nslower. Failures come back as warnings.",
+        "operationId": "warm_v1_s3_runs_warm_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-service-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Service-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WarmIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_WarmOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "unauthorized: missing or invalid X-Service-Key"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "payload_too_large"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "invalid_input, document_unreadable, section_too_large or budget_exceeded"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "internal_error"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "ai_output_invalid or model_call_rejected"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "upstream_unavailable"
+          }
+        },
+        "summary": "Warm",
+        "tags": [
+          "s3"
+        ]
+      }
+    },
+    "/v1/s3/turns/next": {
+      "post": {
+        "description": "Decide what follows the student's latest answer (ST-4): a probe, the end, or a safety pause.\n\nA model failure never fails the turn: it degrades to a teacher-approved question shown\nverbatim and is reported in `warnings`.",
+        "operationId": "next_turn_v1_s3_turns_next_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-service-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Service-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NextTurnIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_NextTurnOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "unauthorized: missing or invalid X-Service-Key"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "payload_too_large"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "invalid_input, document_unreadable, section_too_large or budget_exceeded"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "internal_error"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "ai_output_invalid or model_call_rejected"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "upstream_unavailable"
+          }
+        },
+        "summary": "Next Turn",
+        "tags": [
+          "s3"
         ]
       }
     }

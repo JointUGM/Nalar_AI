@@ -18,6 +18,7 @@ from nalar_ai.platform.http.middleware import (
 )
 from nalar_ai.settings import get_settings
 from nalar_ai.subsystems.s1_knowledge_base.api.router import router as s1_router
+from nalar_ai.subsystems.s3_socratic_prober.api.router import router as s3_router
 
 
 @asynccontextmanager
@@ -45,4 +46,5 @@ def create_app(container: Container | None = None) -> FastAPI:
     app.include_router(health_router)
     app.include_router(embeddings_router)
     app.include_router(s1_router)
+    app.include_router(s3_router)
     return app
