@@ -3,6 +3,7 @@
     uv run python -m evals.s3.run classify --data evals/s3/datasets/labelled.json
     uv run python -m evals.s3.run scripts --scripts evals/s3/datasets/adversarial.json --judge
     uv run python -m evals.s3.run personas --runs 10 --mode table --judge
+    uv run python -m evals.s3.run personas --runs 3 --transcripts evals/s4/datasets/personas.json
 
 --pack defaults to evals/s3/datasets/sample_pack.json; use the pedagogy lead's demo pack.
 Exit code 1 when a gate fails.
@@ -12,6 +13,7 @@ import argparse
 import asyncio
 import json
 import sys
+import uuid
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
@@ -119,7 +121,9 @@ async def run_sessions(
     *,
     mode: PlannerMode,
     judge: bool,
+    pack_json: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    """pack_json: also return the sessions as S4 eval input under "transcripts"."""
     use_case = NextTurnUseCase(
         llm=container.llm,
         embeddings=container.embeddings,
@@ -134,7 +138,40 @@ async def run_sessions(
     report = session_report(traces, pack, container.s3.config.guard, findings)
     report["mode"] = mode.value
     report["judged"] = judge
+    if pack_json is not None:
+        report["transcripts"] = transcripts_payload(traces, pack_json)
     return report
+
+
+def transcripts_payload(
+    traces: Sequence[SessionTrace], pack_json: dict[str, Any]
+) -> dict[str, Any]:
+    """Finished sessions as S4 eval input. Turn ids are stable per session name and index."""
+    return {
+        "context_pack": pack_json,
+        "sessions": [
+            {
+                "name": trace.name,
+                "turns": [
+                    {
+                        "turn_id": str(
+                            uuid.uuid5(uuid.NAMESPACE_URL, f"{trace.name}/{t.turn_index}")
+                        ),
+                        "turn_index": t.turn_index,
+                        "kind": t.kind.value,
+                        "question_text": t.question_text,
+                        "answer_text": t.answer_text,
+                        "move": t.move.value if t.move else None,
+                        "target_concept_id": (
+                            str(t.target_concept_id) if t.target_concept_id else None
+                        ),
+                    }
+                    for t in trace.history
+                ],
+            }
+            for trace in traces
+        ],
+    }
 
 
 async def _judge(
@@ -174,12 +211,17 @@ def main(argv: Sequence[str] | None = None) -> int:
         command = commands.add_parser(name, help=help_text)
         command.add_argument("--mode", choices=[m.value for m in PlannerMode], default="hybrid")
         command.add_argument("--judge", action="store_true", help="Opus leak judge (costs more)")
+        command.add_argument("--transcripts", type=Path, help="save sessions as S4 eval input")
         if name == "scripts":
             command.add_argument("--scripts", type=Path, required=True)
         else:
             command.add_argument("--runs", type=int, default=1, help="runs per persona")
     args = parser.parse_args(argv)
     report = asyncio.run(_run(args))
+    transcripts = report.pop("transcripts", None)
+    if transcripts is not None:
+        dump = json.dumps(transcripts, indent=2, ensure_ascii=False)
+        args.transcripts.write_text(dump + "\n", encoding="utf-8")
     text = json.dumps(report, indent=2, ensure_ascii=False)
     if args.out:
         args.out.write_text(text + "\n", encoding="utf-8")
@@ -204,7 +246,16 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
                 for persona in load_personas()
                 for run in range(args.runs)
             ]
-        return await run_sessions(container, pack, students, mode=mode, judge=args.judge)
+        return await run_sessions(
+            container,
+            pack,
+            students,
+            mode=mode,
+            judge=args.judge,
+            pack_json=(
+                json.loads(args.pack.read_text(encoding="utf-8")) if args.transcripts else None
+            ),
+        )
     finally:
         await container.aclose()
 

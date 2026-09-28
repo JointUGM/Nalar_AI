@@ -1,0 +1,30 @@
+{
+  "claim": [
+    "Tidak ada klaim.",
+    "Klaim tidak jelas.",
+    "Klaim sebagian benar.",
+    "Klaim benar.",
+    "Klaim benar dan tepat sasaran."
+  ],
+  "evidence": [
+    "Tidak ada bukti.",
+    "Bukti tidak relevan.",
+    "Satu bukti relevan.",
+    "Beberapa bukti relevan.",
+    "Bukti relevan dan dikaitkan dengan klaim."
+  ],
+  "mechanism": [
+    "Tidak ada mekanisme.",
+    "Mekanisme keliru.",
+    "Mekanisme sebagian.",
+    "Mekanisme benar.",
+    "Mekanisme benar dan runtut."
+  ],
+  "transfer": [
+    "Tidak mencoba situasi baru.",
+    "Situasi baru dijawab keliru.",
+    "Situasi baru dijawab sebagian.",
+    "Situasi baru dijawab benar.",
+    "Situasi baru dijawab benar dengan alasan."
+  ]
+}
