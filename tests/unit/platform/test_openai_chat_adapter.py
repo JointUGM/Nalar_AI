@@ -253,3 +253,43 @@ async def test_adapter_fills_omitted_nulls_in_structured_output() -> None:
 async def test_adapter_leaves_invalid_json_for_the_gateway_to_report() -> None:
     adapter = _adapter(lambda _: httpx.Response(200, json=_completion(content="not json")))
     assert (await adapter.complete(_request())).text == "not json"
+
+
+def test_non_claude_models_get_no_cache_marker_or_effort() -> None:
+    # Some OpenAI models reject cache_control with a 400 (DECISIONS M2); effort is Claude-only.
+    body = build_chat_body(_request(model="gpt-5.4-mini"))
+    parts = [part for message in body["messages"] for part in message["content"]]
+    assert all("cache_control" not in part for part in parts)
+    assert "output_config" not in body
+    assert body["tool_choice"] == {"type": "function", "function": {"name": "output"}}
+
+
+def test_model_params_are_merged_into_the_body() -> None:
+    body = build_chat_body(_request(model="qwen3.8-max"), {"enable_thinking": False})
+    assert body["enable_thinking"] is False
+
+
+async def test_adapter_applies_params_for_that_model_only() -> None:
+    seen: list[dict[str, Any]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(json.loads(request.content))
+        return httpx.Response(200, json=_completion())
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    adapter = OpenAIChatAdapter(
+        client,
+        base_url="https://sumopod.test/v1",
+        api_key="k",
+        model_params={"qwen3.8-max": {"enable_thinking": False}},
+    )
+    await adapter.complete(_request(model="qwen3.8-max", json_schema=None))
+    await adapter.complete(_request(model="gpt-5.4-mini", json_schema=None))
+    assert seen[0]["enable_thinking"] is False
+    assert "enable_thinking" not in seen[1]
+
+
+def test_default_settings_turn_thinking_off_for_the_qwen_judge() -> None:
+    # qwen refuses a forced tool call while thinking (DECISIONS M1).
+    params = Settings.model_fields["llm_model_params"].default
+    assert params["qwen3.8-max"] == {"enable_thinking": False}

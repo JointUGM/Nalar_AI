@@ -196,7 +196,7 @@ async def test_persona_students_and_the_judge_use_eval_purposes(settings: Settin
     verdict = await LeakJudge(container.llm).judge(make_pack(), "Bagus! Kenapa?", "x", ledger)
     assert verdict.verdict and not verdict.leak
     assert [r.purpose for r in ledger.records] == [EvalPurpose.FAKE_STUDENT, EvalPurpose.LEAK_JUDGE]
-    assert [r.model for r in ledger.records] == ["claude-sonnet-5", "claude-opus-5"]
+    assert [r.model for r in ledger.records] == [settings.model_quality, settings.model_judge]
 
 
 def test_loaders(tmp_path: Path) -> None:
