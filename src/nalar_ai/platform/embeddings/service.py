@@ -58,23 +58,48 @@ class EmbeddingService:
     def dimensions(self) -> int:
         return self._dimensions
 
-    async def embed(self, texts: Sequence[str], *, tag: str, ledger: UsageLedger) -> list[Vector]:
+    async def embed(
+        self,
+        texts: Sequence[str],
+        *,
+        tag: str,
+        ledger: UsageLedger,
+        timeout_s: float | None = None,
+        max_attempts: int | None = None,
+    ) -> list[Vector]:
+        """Embed texts in batches. timeout_s bounds each attempt; max_attempts overrides the default."""
         if any(not text.strip() for text in texts):
             raise InvalidInputError("cannot embed empty text")
         vectors: list[Vector] = []
         for start in range(0, len(texts), self._batch_size):
             batch = list(texts[start : start + self._batch_size])
-            vectors.extend(await self._embed_batch(batch, tag, ledger))
+            vectors.extend(
+                await self._embed_batch(
+                    batch, tag, ledger, timeout_s, max_attempts or self._max_attempts
+                )
+            )
         return vectors
 
-    async def _embed_batch(self, batch: list[str], tag: str, ledger: UsageLedger) -> list[Vector]:
+    async def _embed_batch(
+        self,
+        batch: list[str],
+        tag: str,
+        ledger: UsageLedger,
+        timeout_s: float | None,
+        max_attempts: int,
+    ) -> list[Vector]:
         async def attempt() -> EmbeddingBatch:
             ledger.ensure_budget()
             started = self._clock()
             try:
-                result = await self._port.embed(
-                    batch, model=self._model, dimensions=self._dimensions
-                )
+                async with asyncio.timeout(timeout_s):
+                    result = await self._port.embed(
+                        batch, model=self._model, dimensions=self._dimensions
+                    )
+            except TimeoutError as exc:
+                detail = f"deadline exceeded after {timeout_s}s"
+                ledger.add(self._record(tag, 0, started, ledger, detail))
+                raise TransientEmbeddingError(detail) from exc
             except (TransientEmbeddingError, PermanentEmbeddingError) as exc:
                 ledger.add(self._record(tag, 0, started, ledger, str(exc)))
                 raise
@@ -89,7 +114,7 @@ class EmbeddingService:
             result = await retry_transient(
                 attempt,
                 is_transient=lambda exc: isinstance(exc, TransientEmbeddingError),
-                max_attempts=self._max_attempts,
+                max_attempts=max_attempts,
                 base_delay_s=self._base_delay_s,
                 sleep=self._sleep,
             )

@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from uuid import UUID
 
-from nalar_ai.shared.enums import AiPurpose, CallStatus, RetrievalPath, RetrievalSource
+from nalar_ai.shared.enums import CallStatus, Purpose, RetrievalPath, RetrievalSource
 from nalar_ai.shared.errors import BudgetExceededError
 
 
@@ -22,7 +22,7 @@ class RetrievalRef:
 class InvocationRecord:
     """Maps 1:1 onto an ai_invocations row, which the backend writes."""
 
-    purpose: AiPurpose
+    purpose: Purpose
     model: str
     prompt_version: str
     status: CallStatus

@@ -1,0 +1,146 @@
+# S3 prober lexicons and teacher-facing texts (design doc §6, §11, §12).
+# Owned by the pedagogy lead. Bump `version` on every change; it is logged with each turn.
+# Phrases are matched as whole words after normalisation (case, punctuation and extra spaces
+# are ignored), so "Kasih tau jawabannya!!" matches "kasih tau jawabannya".
+version: 1
+
+prefilter:
+  # An answer this short (after normalisation) is evasive: "", "?", "-", "ok".
+  max_evasive_chars: 2
+  # Manipulation phrases only short-circuit answers up to this many words; longer answers
+  # still carry reasoning, so the classifier reads them.
+  max_manipulation_words: 12
+  # First-person distress or harm only. Never single physical verbs ("dipukul", "ditendang",
+  # "didorong"): in a force-and-motion session they are physics vocabulary.
+  safety_phrases:
+    - bunuh diri
+    - ingin mati
+    - pengen mati
+    - pingin mati
+    - mau mati aja
+    - mending mati
+    - gak mau hidup
+    - ga mau hidup
+    - tidak mau hidup lagi
+    - menyakiti diri
+    - melukai diri
+    - sakiti diriku
+    - aku dipukuli
+    - aku disiksa
+    - aku dibully
+    - aku di bully
+    - aku dirundung
+    - aku diancam
+    - aku dilecehkan
+    - aku takut pulang
+  # Whole-answer matches only.
+  evasive_answers:
+    - gatau
+    - gak tau
+    - ga tau
+    - nggak tau
+    - enggak tau
+    - gatahu
+    - gak tahu
+    - ga tahu
+    - nggak tahu
+    - tidak tahu
+    - tau
+    - entah
+    - entahlah
+    - terserah
+    - bodo amat
+    - idk
+    - gak ngerti
+    - ga ngerti
+    - nggak ngerti
+    - tidak mengerti
+    - bingung
+    - skip
+    - pass
+  manipulation_phrases:
+    - kasih jawabannya
+    - kasih tau jawabannya
+    - kasih tahu jawabannya
+    - kasih tau aja
+    - kasih tahu aja
+    - beri jawabannya
+    - beritahu jawabannya
+    - jawabannya apa
+    - apa jawabannya
+    # Permission claims only: a short answer may legitimately cite the teacher
+    # ("kata bu guru benda diam karena gayanya seimbang").
+    - kata guru boleh
+    - kata bu guru boleh
+    - kata pak guru boleh
+    - guru bilang boleh
+    - bu guru bilang boleh
+    - kamu boleh jawab
+    - kamu boleh kasih tau
+    - kamu boleh kasih tahu
+    - abaikan instruksi
+    - abaikan perintah
+    - lupakan instruksi
+    - ignore previous
+    - ignore your instructions
+    - kamu jadi guruku
+    - pura pura jadi guru
+    - system prompt
+
+guard:
+  max_chars: 280
+  max_sentences: 2
+  # Judging words. Blocked when the adapted question uses one the approved question does not.
+  verdict_terms:
+    - benar
+    - betul
+    - salah
+    - keliru
+    - tepat
+    - tepat sekali
+    - kurang tepat
+    - yang benar adalah
+    - jawabannya adalah
+    - bagus
+    - hebat
+    - pintar
+    - pinter
+    - mantap
+    - sudah benar
+    - hampir benar
+    - hampir
+    - iya betul
+    - bukan begitu
+    - coba lagi
+    - coba pikir lagi
+    - sip
+    - keren
+    - nah itu
+
+texts:
+  safety_message: >-
+    Terima kasih sudah mau cerita. Kita berhenti sebentar, ya. Gurumu akan segera
+    menghampirimu. Kamu tidak sendirian.
+  templates:
+    default: "{move}, karena {answer}."
+    coverage: "{move}: setiap konsep target wajib mendapat satu pertanyaan tantangan."
+    fallback_error: "{move}: dipakai pertanyaan yang disetujui guru apa adanya, karena AI tidak menjawab tepat waktu."
+    fallback_invalid: "{move}: dipakai pertanyaan yang disetujui guru apa adanya, karena pilihan AI tidak lolos pemeriksaan."
+  moves:
+    transfer: Situasi baru
+    request_justification: Minta alasan
+    counter_example: Contoh pembanding
+    decompose: Pecah jadi langkah kecil
+    refuse_and_redirect: Tolak dan kembali ke pertanyaan
+    deeper_reason: Alasan yang lebih dalam
+    explain_mechanism: Jelaskan cara kerjanya
+    simpler_reason: Alasan dengan kata sederhana
+  answers:
+    correct_reasoned: jawaban benar dengan alasan
+    correct_unreasoned: jawaban benar tanpa alasan
+    misconception: jawaban memuat ide keliru
+    mixed: jawaban sebagian benar dan sebagian memuat ide keliru
+    evasive: jawaban kosong atau menghindar
+    manipulation: siswa meminta jawaban atau mencoba mengubah aturan
+    unsure: AI belum yakin membaca jawabannya
+    safety: ada tanda siswa butuh perhatian

@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     llm_timeout_seconds: float = 120.0
     llm_max_attempts: int = 3
     llm_concurrency: int = 4
+    llm_live_concurrency: int = 32
     max_cost_usd_per_request: float = 1.0
     max_upload_bytes: int = 50 * 1024 * 1024
 
@@ -42,6 +43,18 @@ class Settings(BaseSettings):
     s1_cp_min_similarity: float = 0.25
     s1_max_section_claude_tokens: int = 80_000
     s1_evidence_pack_claude_tokens: int = 3_000
+
+    # S3 policy (design doc s3 §8, §11, §13). Starting points, tuned on the pilot.
+    s3_turn_budget_seconds: float = 4.5
+    s3_classify_timeout_seconds: float = 2.0
+    s3_choose_timeout_seconds: float = 2.5
+    s3_embed_timeout_seconds: float = 1.0
+    s3_min_step_seconds: float = 0.3
+    s3_min_probes: int = 4
+    s3_transcript_turns: int = 6
+    s3_max_answer_chars: int = 1500
+    s3_guard_max_reference_similarity: float = 0.80
+    s3_guard_min_approved_similarity: float = 0.55
 
 
 @lru_cache

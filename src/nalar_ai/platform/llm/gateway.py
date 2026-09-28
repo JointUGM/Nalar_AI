@@ -4,8 +4,8 @@ import asyncio
 import json
 import time
 from collections.abc import Awaitable, Callable, Mapping, Sequence
-from dataclasses import replace
-from typing import Any
+from dataclasses import dataclass, replace
+from typing import Any, Literal
 
 from pydantic import BaseModel, ValidationError
 
@@ -24,6 +24,7 @@ from nalar_ai.platform.prompts.registry import PromptRegistry, PromptTemplate
 from nalar_ai.platform.retry import retry_transient
 from nalar_ai.shared.enums import CallStatus, ModelTier
 from nalar_ai.shared.errors import (
+    ConfigurationError,
     ModelCallRejectedError,
     OutputValidationError,
     UpstreamUnavailableError,
@@ -33,6 +34,29 @@ from nalar_ai.shared.text import fence_untrusted
 
 _MAX_REPORTED_ERRORS = 20
 _MAX_ECHOED_OUTPUT_CHARS = 20_000
+
+# Models whose API rejects `output_config.effort` (Haiku 4.5 returns 400).
+MODELS_WITHOUT_EFFORT = frozenset({"claude-haiku-4-5"})
+
+Lane = Literal["batch", "live"]
+
+
+@dataclass(frozen=True, slots=True)
+class CallPolicy:
+    """Per-call limits. The defaults suit batch work (S1); live turns (S3) pass a tight policy.
+
+    timeout_s: per attempt, including the wait for a concurrency slot; None = no deadline.
+    max_attempts: None = the gateway default. max_repairs: repair calls for invalid output.
+    lane: live calls never queue behind batch calls.
+    """
+
+    timeout_s: float | None = None
+    max_attempts: int | None = None
+    max_repairs: int = 1
+    lane: Lane = "batch"
+
+
+BATCH_POLICY = CallPolicy()
 
 
 class LLMGateway:
@@ -45,6 +69,7 @@ class LLMGateway:
         native_structured_output: bool = True,
         max_attempts: int = 3,
         concurrency: int = 4,
+        live_concurrency: int = 32,
         base_delay_s: float = 0.5,
         provider: str = "sumopod",
         clock: Callable[[], float] = time.perf_counter,
@@ -53,12 +78,22 @@ class LLMGateway:
         for tier, model in models.items():
             if model not in LLM_PRICES:
                 raise UnknownModelPriceError(f"tier {tier.value}: no price for model {model!r}")
+        for template in prompts.templates():
+            mapped = models.get(template.tier)
+            if template.effort is not None and mapped in MODELS_WITHOUT_EFFORT:
+                raise ConfigurationError(
+                    f"{template.version_tag} sets effort, but its tier {template.tier.value} "
+                    f"maps to {mapped}, which rejects effort"
+                )
         self._port = port
         self._prompts = prompts
         self._models = dict(models)
         self._native = native_structured_output
         self._max_attempts = max_attempts
-        self._semaphore = asyncio.Semaphore(concurrency)
+        self._semaphores: dict[Lane, asyncio.Semaphore] = {
+            "batch": asyncio.Semaphore(concurrency),
+            "live": asyncio.Semaphore(live_concurrency),
+        }
         self._base_delay_s = base_delay_s
         self._provider = provider
         self._clock = clock
@@ -73,6 +108,7 @@ class LLMGateway:
         ledger: UsageLedger,
         retrieval: Sequence[RetrievalRef] = (),
         semantic_check: Callable[[M], Sequence[str]] | None = None,
+        policy: CallPolicy = BATCH_POLICY,
     ) -> M:
         template = self._prompts.get(prompt_id)
         rendered = template.render(variables)
@@ -93,20 +129,22 @@ class LLMGateway:
             effort=template.effort,
         )
 
-        response = await self._call(request, template, ledger, retrieval)
+        response = await self._call(request, template, ledger, retrieval, policy)
         parsed, errors = _parse(response, output_model, semantic_check)
         if parsed is not None:
             return parsed
 
-        repair = replace(
-            request, blocks=(*request.blocks, UserBlock(_repair_instruction(response.text, errors)))
-        )
-        response = await self._call(repair, template, ledger, retrieval)
-        parsed, errors = _parse(response, output_model, semantic_check)
-        if parsed is not None:
-            return parsed
+        for _ in range(policy.max_repairs):
+            repair = replace(
+                request,
+                blocks=(*request.blocks, UserBlock(_repair_instruction(response.text, errors))),
+            )
+            response = await self._call(repair, template, ledger, retrieval, policy)
+            parsed, errors = _parse(response, output_model, semantic_check)
+            if parsed is not None:
+                return parsed
         raise OutputValidationError(
-            f"{template.version_tag} returned invalid output after one repair",
+            f"{template.version_tag} returned invalid output{_after_repairs(policy.max_repairs)}",
             details={"errors": list(errors)[:_MAX_REPORTED_ERRORS]},
         )
 
@@ -116,46 +154,49 @@ class LLMGateway:
         template: PromptTemplate,
         ledger: UsageLedger,
         retrieval: Sequence[RetrievalRef],
+        policy: CallPolicy,
     ) -> LLMResponse:
+        semaphore = self._semaphores[policy.lane]
+
         async def attempt() -> LLMResponse:
             ledger.ensure_budget()
-            async with self._semaphore:
-                started = self._clock()
-                try:
+            started = self._clock()
+            try:
+                async with asyncio.timeout(policy.timeout_s), semaphore:
                     response = await self._port.complete(request)
-                except (TransientLLMError, PermanentLLMError) as exc:
-                    ledger.add(
-                        self._record(
-                            template,
-                            request.model,
-                            LLMUsage(),
-                            started,
-                            ledger,
-                            retrieval,
-                            str(exc),
-                        )
-                    )
-                    raise
-                except Exception as exc:  # an odd payload must not drop the attempt's record
-                    detail = f"unexpected provider error: {exc!r}"
-                    ledger.add(
-                        self._record(
-                            template, request.model, LLMUsage(), started, ledger, retrieval, detail
-                        )
-                    )
-                    raise PermanentLLMError(detail) from exc
+            except TimeoutError as exc:
+                detail = f"deadline exceeded after {policy.timeout_s}s"
                 ledger.add(
                     self._record(
-                        template, request.model, response.usage, started, ledger, retrieval
+                        template, request.model, LLMUsage(), started, ledger, retrieval, detail
                     )
                 )
-                return response
+                raise TransientLLMError(detail) from exc
+            except (TransientLLMError, PermanentLLMError) as exc:
+                ledger.add(
+                    self._record(
+                        template, request.model, LLMUsage(), started, ledger, retrieval, str(exc)
+                    )
+                )
+                raise
+            except Exception as exc:  # an odd payload must not drop the attempt's record
+                detail = f"unexpected provider error: {exc!r}"
+                ledger.add(
+                    self._record(
+                        template, request.model, LLMUsage(), started, ledger, retrieval, detail
+                    )
+                )
+                raise PermanentLLMError(detail) from exc
+            ledger.add(
+                self._record(template, request.model, response.usage, started, ledger, retrieval)
+            )
+            return response
 
         try:
             return await retry_transient(
                 attempt,
                 is_transient=lambda exc: isinstance(exc, TransientLLMError),
-                max_attempts=self._max_attempts,
+                max_attempts=policy.max_attempts or self._max_attempts,
                 base_delay_s=self._base_delay_s,
                 sleep=self._sleep,
             )
@@ -190,6 +231,14 @@ class LLMGateway:
             error_message=error,
             retrieval=tuple(retrieval),
         )
+
+
+def _after_repairs(max_repairs: int) -> str:
+    if max_repairs == 0:
+        return " (no repair allowed)"
+    if max_repairs == 1:
+        return " after one repair"
+    return f" after {max_repairs} repairs"
 
 
 def _extract_json(text: str) -> str:

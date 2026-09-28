@@ -80,3 +80,12 @@ def test_registry_rejects_duplicate_versions(tmp_path: Path) -> None:
     (tmp_path / "b.prompt").write_text(PROMPT, encoding="utf-8")
     with pytest.raises(PromptError, match="duplicate"):
         PromptRegistry.from_directories([tmp_path])
+
+
+def test_templates_lists_every_version_in_order(tmp_path: Path) -> None:
+    (tmp_path / "echo.v2.prompt").write_text(
+        PROMPT.replace("version: 1", "version: 2"), encoding="utf-8"
+    )
+    (tmp_path / "echo.v1.prompt").write_text(PROMPT, encoding="utf-8")
+    registry = PromptRegistry.from_directories([tmp_path])
+    assert [t.version_tag for t in registry.templates()] == ["t.echo@v1", "t.echo@v2"]
