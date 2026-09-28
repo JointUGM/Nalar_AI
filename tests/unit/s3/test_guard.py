@@ -97,6 +97,29 @@ def test_a_term_the_student_used_with_an_affix_is_known() -> None:
     )
 
 
+@pytest.mark.parametrize(
+    ("term", "answer", "adapted"),
+    [
+        ("arus", "lampunya harus nyala", "Kalau arus listriknya putus, kenapa lampu padam?"),
+        ("sel", "lampunya selalu nyala", "Apa yang terjadi di dalam sel itu?"),
+        ("gas", "tugasnya susah", "Kenapa gas itu mengembang?"),
+    ],
+)
+def test_a_term_hidden_inside_another_student_word_is_not_known(
+    term: str, answer: str, adapted: str
+) -> None:
+    # "harus" contains "arus", but the student never named the idea "arus".
+    assert check_text(adapted, APPROVED, (answer,), (term,), LEXICON) is G.BLOCKED_NEW_TERMS
+
+
+def test_only_the_students_exact_affixed_form_is_known_not_the_bare_term() -> None:
+    answers = ("kelerengnya bergesekan dengan lantai",)
+    same_form = "Kamu bilang kelerengnya bergesekan. Kenapa tetap berhenti?"
+    bare_term = "Kamu bilang ada gesekan. Kenapa tetap berhenti?"
+    assert _check(same_form, answers) is None
+    assert _check(bare_term, answers) is G.BLOCKED_NEW_TERMS
+
+
 def test_known_terms_never_match_across_two_sources() -> None:
     approved = "Menurutmu, apa arti kata hukum?"
     adapted = "Menurutmu, apa arti hukum newton?"
