@@ -1,6 +1,7 @@
 from nalar_ai.shared.enums import (
     AiPurpose,
     ChunkKind,
+    ConceptOutcome,
     GuardResult,
     MoveReasonCode,
     MoveSource,
@@ -8,6 +9,7 @@ from nalar_ai.shared.enums import (
     ProbeStrategy,
     RetrievalPath,
     RetrievalSource,
+    RubricDimension,
 )
 
 
@@ -24,7 +26,7 @@ def test_chunk_kind_labels_match_migration_003() -> None:
     ]
 
 
-def test_ai_purposes_exist_in_migrations_002_and_003() -> None:
+def test_ai_purposes_exist_in_the_schema_and_migrations_002_and_003() -> None:
     assert {purpose.value for purpose in AiPurpose} == {
         "kb_extract",
         "kb_misconceptions",
@@ -33,6 +35,8 @@ def test_ai_purposes_exist_in_migrations_002_and_003() -> None:
         "embedding",
         "turn_analyze",
         "probe_plan",
+        "session_evaluation",
+        "reflection_generation",
     }
 
 
@@ -84,3 +88,13 @@ def test_retrieval_labels_match_ai_invocations_retrieval_contract() -> None:
         "concept",
     }
     assert {p.value for p in RetrievalPath} == {"link", "search", "teacher_confirmed"}
+
+
+def test_evaluation_labels_match_the_base_schema() -> None:
+    assert [d.value for d in RubricDimension] == ["claim", "evidence", "mechanism", "transfer"]
+    assert [o.value for o in ConceptOutcome] == [
+        "mastered",
+        "developing",
+        "misconception",
+        "not_observed",
+    ]

@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     llm_max_attempts: int = 3
     llm_concurrency: int = 4
     llm_live_concurrency: int = 32
+    llm_scoring_concurrency: int = 16
     max_cost_usd_per_request: float = 1.0
     max_upload_bytes: int = 50 * 1024 * 1024
 
@@ -55,6 +56,13 @@ class Settings(BaseSettings):
     s3_max_answer_chars: int = 1500
     s3_guard_max_reference_similarity: float = 0.80
     s3_guard_min_approved_similarity: float = 0.55
+
+    # S4 policy (design doc s4 §7, §11). Starting points, tuned on the pilot.
+    s4_score_timeout_seconds: float = 60.0
+    s4_reflect_timeout_seconds: float = 20.0
+    s4_max_attempts: int = 2
+    s4_max_answer_chars: int = 1500
+    s4_max_quotes_per_score: int = 4
 
 
 @lru_cache

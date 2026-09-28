@@ -24,6 +24,7 @@ from evals.s3.simulate import (
     ScriptedStudent,
     run_session,
 )
+from evals.s4.data import load_cases
 from nalar_ai.container import Container, build_container
 from nalar_ai.platform.embeddings.fakes import HashingEmbedder
 from nalar_ai.platform.llm.fakes import Reply, ScriptedLLM
@@ -36,6 +37,7 @@ from nalar_ai.subsystems.s3_socratic_prober.application.next_turn import (
     TurnAction,
 )
 from nalar_ai.subsystems.s3_socratic_prober.domain.moves import AnswerType
+from nalar_ai.subsystems.s4_session_evaluator.domain.session import validate_session
 from tests.support.s3 import M_HABIS, classify_reply, make_pack, pack_payload
 
 _DEFAULT = re.compile(r"- (\w+) \(default\): (q\d+)")
@@ -229,3 +231,21 @@ def test_percentile_and_accuracy() -> None:
     assert math.isnan(percentile([], 50))
     assert accuracy([]) == 1.0
     assert accuracy([(AnswerType.EVASIVE, AnswerType.EVASIVE)]) == 1.0
+
+
+async def test_transcripts_are_valid_s4_eval_input(settings: Settings, tmp_path: Path) -> None:
+    container = _container(settings, ScriptedLLM(route=_fake_prober))
+    report = await run_sessions(
+        container,
+        make_pack(),
+        scripted_students([StudentScript("gatau", "steering", ("gatau",))]),
+        mode=PlannerMode.TABLE,
+        judge=False,
+        pack_json=pack_payload(),
+    )
+    path = tmp_path / "transcripts.json"
+    path.write_text(json.dumps(report["transcripts"]), encoding="utf-8")
+    (case,) = load_cases(path)
+    assert case.name == "gatau" and case.teacher_levels is None
+    assert validate_session(case.session) == []
+    assert len(case.session.turns) == 1 + make_pack().max_probes

@@ -22,6 +22,8 @@ class AiPurpose(StrEnum):
     EMBEDDING = "embedding"
     TURN_ANALYZE = "turn_analyze"
     PROBE_PLAN = "probe_plan"
+    SESSION_EVALUATION = "session_evaluation"  # base schema label
+    REFLECTION_GENERATION = "reflection_generation"  # base schema label
 
 
 class EvalPurpose(StrEnum):
@@ -106,3 +108,21 @@ class GuardResult(StrEnum):
     BLOCKED_SIMILARITY = "blocked_similarity"
     BLOCKED_DRIFT = "blocked_drift"
     NOT_RUN = "not_run"
+
+
+class RubricDimension(StrEnum):
+    """rubric_dimension (NALAR-Schema.sql)."""
+
+    CLAIM = "claim"
+    EVIDENCE = "evidence"
+    MECHANISM = "mechanism"
+    TRANSFER = "transfer"
+
+
+class ConceptOutcome(StrEnum):
+    """concept_outcome (NALAR-Schema.sql)."""
+
+    MASTERED = "mastered"
+    DEVELOPING = "developing"
+    MISCONCEPTION = "misconception"
+    NOT_OBSERVED = "not_observed"

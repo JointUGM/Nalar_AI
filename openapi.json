@@ -9,7 +9,9 @@
           "kb_dedup",
           "embedding",
           "turn_analyze",
-          "probe_plan"
+          "probe_plan",
+          "session_evaluation",
+          "reflection_generation"
         ],
         "title": "AiPurpose",
         "type": "string"
@@ -561,6 +563,79 @@
           "source_chunk_ids"
         ],
         "title": "ConceptForMisconceptionsIn",
+        "type": "object"
+      },
+      "ConceptOutcome": {
+        "description": "concept_outcome (NALAR-Schema.sql).",
+        "enum": [
+          "mastered",
+          "developing",
+          "misconception",
+          "not_observed"
+        ],
+        "title": "ConceptOutcome",
+        "type": "string"
+      },
+      "ConceptResultOut": {
+        "properties": {
+          "concept_id": {
+            "format": "uuid",
+            "title": "Concept Id",
+            "type": "string"
+          },
+          "evidence_turn_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Turn Id"
+          },
+          "initial_misconception_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Initial Misconception Id"
+          },
+          "misconception_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Misconception Id"
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/ConceptOutcome"
+          },
+          "resolved_in_session": {
+            "title": "Resolved In Session",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "concept_id",
+          "outcome",
+          "misconception_id",
+          "evidence_turn_id",
+          "initial_misconception_id",
+          "resolved_in_session"
+        ],
+        "title": "ConceptResultOut",
         "type": "object"
       },
       "ContextPackIn": {
@@ -1156,6 +1231,34 @@
         "title": "Envelope[EmbedOut]",
         "type": "object"
       },
+      "Envelope_EvaluateOut_": {
+        "properties": {
+          "invocations": {
+            "items": {
+              "$ref": "#/components/schemas/InvocationOut"
+            },
+            "title": "Invocations",
+            "type": "array"
+          },
+          "result": {
+            "$ref": "#/components/schemas/EvaluateOut"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "result",
+          "invocations",
+          "warnings"
+        ],
+        "title": "Envelope[EvaluateOut]",
+        "type": "object"
+      },
       "Envelope_ExtractConceptsOut_": {
         "properties": {
           "invocations": {
@@ -1323,6 +1426,273 @@
           "invocations"
         ],
         "title": "ErrorEnvelope",
+        "type": "object"
+      },
+      "EvalMisconceptionIn": {
+        "properties": {
+          "concept_id": {
+            "format": "uuid",
+            "title": "Concept Id",
+            "type": "string"
+          },
+          "detection_cues": {
+            "items": {
+              "maxLength": 300,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Detection Cues",
+            "type": "array"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "statement": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Statement",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "concept_id",
+          "statement"
+        ],
+        "title": "EvalMisconceptionIn",
+        "type": "object"
+      },
+      "EvalTargetIn": {
+        "properties": {
+          "description": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Description",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "EvalTargetIn",
+        "type": "object"
+      },
+      "EvalTurnIn": {
+        "description": "One session_turns row. S3's analysis of the answer is deliberately not accepted.",
+        "properties": {
+          "answer_text": {
+            "anyOf": [
+              {
+                "maxLength": 20000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "session_turns.answer_text; null or empty when the turn was not answered",
+            "title": "Answer Text"
+          },
+          "kind": {
+            "enum": [
+              "anchor",
+              "probe"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "move": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProbeStrategy"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "prompt_strategy"
+          },
+          "question_text": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Question Text",
+            "type": "string"
+          },
+          "target_concept_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Concept Id"
+          },
+          "turn_id": {
+            "description": "session_turns.id, returned on every quote",
+            "format": "uuid",
+            "title": "Turn Id",
+            "type": "string"
+          },
+          "turn_index": {
+            "maximum": 50.0,
+            "minimum": 0.0,
+            "title": "Turn Index",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "turn_id",
+          "turn_index",
+          "kind",
+          "question_text"
+        ],
+        "title": "EvalTurnIn",
+        "type": "object"
+      },
+      "EvaluateIn": {
+        "properties": {
+          "context_pack": {
+            "$ref": "#/components/schemas/EvaluationPackIn"
+          },
+          "rubric": {
+            "$ref": "#/components/schemas/RubricIn"
+          },
+          "turns": {
+            "items": {
+              "$ref": "#/components/schemas/EvalTurnIn"
+            },
+            "maxItems": 30,
+            "minItems": 1,
+            "title": "Turns",
+            "type": "array"
+          }
+        },
+        "required": [
+          "context_pack",
+          "rubric",
+          "turns"
+        ],
+        "title": "EvaluateIn",
+        "type": "object"
+      },
+      "EvaluateOut": {
+        "properties": {
+          "concept_results": {
+            "items": {
+              "$ref": "#/components/schemas/ConceptResultOut"
+            },
+            "title": "Concept Results",
+            "type": "array"
+          },
+          "reflection": {
+            "$ref": "#/components/schemas/SessionReflectionOut"
+          },
+          "scores": {
+            "items": {
+              "$ref": "#/components/schemas/RubricScoreOut"
+            },
+            "title": "Scores",
+            "type": "array"
+          },
+          "summary": {
+            "description": "session_evaluations.summary",
+            "title": "Summary",
+            "type": "string"
+          },
+          "turn_quality": {
+            "description": "session_evaluations.turn_quality",
+            "items": {
+              "$ref": "#/components/schemas/TurnQualityOut"
+            },
+            "title": "Turn Quality",
+            "type": "array"
+          }
+        },
+        "required": [
+          "summary",
+          "scores",
+          "concept_results",
+          "turn_quality",
+          "reflection"
+        ],
+        "title": "EvaluateOut",
+        "type": "object"
+      },
+      "EvaluationPackIn": {
+        "description": "mission_versions.context_pack, sent unchanged. Only the fields S4 reads are declared;\nthe rest (question bank, limits) is accepted and ignored.",
+        "properties": {
+          "anchor_problem": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Anchor Problem",
+            "type": "string"
+          },
+          "answer_terms": {
+            "items": {
+              "maxLength": 100,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "Answer Terms",
+            "type": "array"
+          },
+          "misconceptions": {
+            "items": {
+              "$ref": "#/components/schemas/EvalMisconceptionIn"
+            },
+            "maxItems": 30,
+            "title": "Misconceptions",
+            "type": "array"
+          },
+          "pack_version": {
+            "const": 1,
+            "title": "Pack Version",
+            "type": "integer"
+          },
+          "reference_reasoning": {
+            "maxLength": 8000,
+            "minLength": 1,
+            "title": "Reference Reasoning",
+            "type": "string"
+          },
+          "targets": {
+            "items": {
+              "$ref": "#/components/schemas/EvalTargetIn"
+            },
+            "maxItems": 5,
+            "minItems": 1,
+            "title": "Targets",
+            "type": "array"
+          }
+        },
+        "required": [
+          "pack_version",
+          "anchor_problem",
+          "reference_reasoning",
+          "targets",
+          "answer_terms"
+        ],
+        "title": "EvaluationPackIn",
         "type": "object"
       },
       "ExistingConceptIn": {
@@ -2247,6 +2617,126 @@
         "title": "RetrievalSource",
         "type": "string"
       },
+      "RubricDimension": {
+        "description": "rubric_dimension (NALAR-Schema.sql).",
+        "enum": [
+          "claim",
+          "evidence",
+          "mechanism",
+          "transfer"
+        ],
+        "title": "RubricDimension",
+        "type": "string"
+      },
+      "RubricIn": {
+        "description": "mission_versions.rubric: five descriptors per dimension; list position is the level.",
+        "properties": {
+          "claim": {
+            "items": {
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 5,
+            "minItems": 5,
+            "title": "Claim",
+            "type": "array"
+          },
+          "evidence": {
+            "items": {
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 5,
+            "minItems": 5,
+            "title": "Evidence",
+            "type": "array"
+          },
+          "mechanism": {
+            "items": {
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 5,
+            "minItems": 5,
+            "title": "Mechanism",
+            "type": "array"
+          },
+          "transfer": {
+            "items": {
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 5,
+            "minItems": 5,
+            "title": "Transfer",
+            "type": "array"
+          }
+        },
+        "required": [
+          "claim",
+          "evidence",
+          "mechanism",
+          "transfer"
+        ],
+        "title": "RubricIn",
+        "type": "object"
+      },
+      "RubricScoreOut": {
+        "properties": {
+          "dimension": {
+            "$ref": "#/components/schemas/RubricDimension"
+          },
+          "evidence": {
+            "description": "score_evidence rows; at least one",
+            "items": {
+              "$ref": "#/components/schemas/ScoreEvidenceOut"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "level": {
+            "description": "evaluation_scores.ai_level and final_level",
+            "title": "Level",
+            "type": "integer"
+          },
+          "rationale": {
+            "title": "Rationale",
+            "type": "string"
+          }
+        },
+        "required": [
+          "dimension",
+          "level",
+          "rationale",
+          "evidence"
+        ],
+        "title": "RubricScoreOut",
+        "type": "object"
+      },
+      "ScoreEvidenceOut": {
+        "properties": {
+          "quote": {
+            "description": "The student's own words, verbatim from that turn's answer",
+            "title": "Quote",
+            "type": "string"
+          },
+          "turn_id": {
+            "format": "uuid",
+            "title": "Turn Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "turn_id",
+          "quote"
+        ],
+        "title": "ScoreEvidenceOut",
+        "type": "object"
+      },
       "SectionOut": {
         "properties": {
           "level": {
@@ -2295,6 +2785,30 @@
           "suggested"
         ],
         "title": "SectionOut",
+        "type": "object"
+      },
+      "SessionReflectionOut": {
+        "properties": {
+          "content": {
+            "description": "session_reflections.content",
+            "title": "Content",
+            "type": "string"
+          },
+          "source": {
+            "description": "Not stored; 'template' after two blocked tries",
+            "enum": [
+              "model",
+              "template"
+            ],
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "content",
+          "source"
+        ],
+        "title": "SessionReflectionOut",
         "type": "object"
       },
       "SkippedPageOut": {
@@ -2362,6 +2876,31 @@
         ],
         "title": "TurnKind",
         "type": "string"
+      },
+      "TurnQualityOut": {
+        "properties": {
+          "quality": {
+            "description": "0 empty or evasive … 4 correct with a clear mechanism",
+            "title": "Quality",
+            "type": "integer"
+          },
+          "turn_id": {
+            "format": "uuid",
+            "title": "Turn Id",
+            "type": "string"
+          },
+          "turn_index": {
+            "title": "Turn Index",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "turn_id",
+          "turn_index",
+          "quality"
+        ],
+        "title": "TurnQualityOut",
+        "type": "object"
       },
       "WarmIn": {
         "properties": {
@@ -3405,6 +3944,116 @@
         "summary": "Next Turn",
         "tags": [
           "s3"
+        ]
+      }
+    },
+    "/v1/s4/sessions/evaluate": {
+      "post": {
+        "description": "Score a finished session and write the student's reflection (TC-10, ST-6).\n\nCall it once per session (NFR-R2). Every quote is verified to be the student's own words;\nan answer that cannot be verified fails with `ai_output_invalid` rather than being stored.",
+        "operationId": "evaluate_session_v1_s4_sessions_evaluate_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-service-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Service-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvaluateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_EvaluateOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "unauthorized: missing or invalid X-Service-Key"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "payload_too_large"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "invalid_input, document_unreadable, section_too_large or budget_exceeded"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "internal_error"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "ai_output_invalid or model_call_rejected"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "upstream_unavailable"
+          }
+        },
+        "summary": "Evaluate Session",
+        "tags": [
+          "s4"
         ]
       }
     }

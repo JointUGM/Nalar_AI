@@ -5,7 +5,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 
 from nalar_ai.shared.enums import GuardResult
-from nalar_ai.shared.text import contains_phrase, contains_stem, normalize_key
+from nalar_ai.shared.text import contains_phrase, normalize_key, stem_spans
 from nalar_ai.shared.vectors import cosine
 
 _SENTENCE_END = re.compile(r"[.!?]+(?:\s+|$)")
@@ -60,12 +60,17 @@ def check_text(
         if contains_phrase(adapted_key, term) and not contains_phrase(approved_key, term):
             return GuardResult.BLOCKED_VERDICT
     known = [approved_key, *(normalize_key(answer) for answer in student_answers)]
+
+    def already_used(form: str) -> bool:
+        return any(contains_phrase(source, form) for source in known)
+
     for term in answer_terms:
         term_key = normalize_key(term)
         # Stems, not whole words: "gesekannya" and "bergesekan" still give "gesekan" away.
-        if contains_stem(adapted_key, term_key) and not any(
-            contains_stem(source, term_key) for source in known
-        ):
+        spans = stem_spans(adapted_key, term_key)
+        # Known only as the term itself or the very word form used here: a stem inside another
+        # word of a source ("harus" for "arus") is not proof the idea was already named.
+        if spans and not (already_used(term_key) or all(already_used(s) for s in spans)):
             return GuardResult.BLOCKED_NEW_TERMS
     return None
 

@@ -101,11 +101,22 @@ layers = [
 ]
 
 [[tool.importlinter.contracts]]
+name = "S4 layers"
+type = "layers"
+layers = [
+    "nalar_ai.subsystems.s4_session_evaluator.api",
+    "nalar_ai.subsystems.s4_session_evaluator.infrastructure",
+    "nalar_ai.subsystems.s4_session_evaluator.application",
+    "nalar_ai.subsystems.s4_session_evaluator.domain",
+]
+
+[[tool.importlinter.contracts]]
 name = "Independent subsystems"
 type = "independence"
 modules = [
     "nalar_ai.subsystems.s1_knowledge_base",
     "nalar_ai.subsystems.s3_socratic_prober",
+    "nalar_ai.subsystems.s4_session_evaluator",
 ]
 
 [[tool.importlinter.contracts]]
@@ -115,5 +126,6 @@ source_modules = [
     "nalar_ai.shared",
     "nalar_ai.subsystems.s1_knowledge_base.domain",
     "nalar_ai.subsystems.s3_socratic_prober.domain",
+    "nalar_ai.subsystems.s4_session_evaluator.domain",
 ]
 forbidden_modules = ["fastapi", "httpx", "anthropic", "pymupdf", "tiktoken", "yaml", "nalar_ai.platform"]

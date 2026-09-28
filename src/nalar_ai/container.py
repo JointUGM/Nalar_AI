@@ -18,9 +18,11 @@ from nalar_ai.subsystems.s1_knowledge_base.module import PROMPTS_DIR as S1_PROMP
 from nalar_ai.subsystems.s1_knowledge_base.module import S1Module, build_s1_module
 from nalar_ai.subsystems.s3_socratic_prober.module import PROMPTS_DIR as S3_PROMPTS_DIR
 from nalar_ai.subsystems.s3_socratic_prober.module import S3Module, build_s3_module
+from nalar_ai.subsystems.s4_session_evaluator.module import PROMPTS_DIR as S4_PROMPTS_DIR
+from nalar_ai.subsystems.s4_session_evaluator.module import S4Module, build_s4_module
 
 # Every subsystem registers its prompt directory here.
-PROMPT_DIRECTORIES: tuple[Path, ...] = (S1_PROMPTS_DIR, S3_PROMPTS_DIR)
+PROMPT_DIRECTORIES: tuple[Path, ...] = (S1_PROMPTS_DIR, S3_PROMPTS_DIR, S4_PROMPTS_DIR)
 
 Closer = Callable[[], Awaitable[None]]
 
@@ -36,6 +38,7 @@ class Container:
     tokens: TokenCounter
     s1: S1Module
     s3: S3Module
+    s4: S4Module
     closers: tuple[Closer, ...] = field(default=())
 
     async def aclose(self) -> None:
@@ -69,6 +72,7 @@ def build_container(
         max_attempts=settings.llm_max_attempts,
         concurrency=settings.llm_concurrency,
         live_concurrency=settings.llm_live_concurrency,
+        scoring_concurrency=settings.llm_scoring_concurrency,
         provider=settings.llm_provider,
     )
     embeddings = EmbeddingService(
@@ -86,6 +90,7 @@ def build_container(
         tokens=TokenCounter(),
         s1=build_s1_module(settings),
         s3=build_s3_module(settings),
+        s4=build_s4_module(settings),
         closers=tuple(closers),
     )
 
