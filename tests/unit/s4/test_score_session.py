@@ -42,7 +42,7 @@ async def test_a_valid_answer_is_verified_in_one_call() -> None:
     assert result.evaluation.summary.startswith("Siswa mengubah pendapat")
     (record,) = ledger.records
     assert record.purpose is AiPurpose.SESSION_EVALUATION
-    assert record.prompt_version == "s4.score_session@v1"
+    assert record.prompt_version == "s4.score_session@v2"
     assert record.model == "claude-sonnet-5"
 
 

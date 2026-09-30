@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import logging
 import time
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
@@ -39,6 +40,9 @@ _MAX_ECHOED_OUTPUT_CHARS = 20_000
 MODELS_WITHOUT_EFFORT = frozenset({"claude-haiku-4-5"})
 
 Lane = Literal["batch", "live", "scoring"]
+
+
+logger = logging.getLogger("nalar_ai.llm")
 
 
 @dataclass(frozen=True, slots=True)
@@ -145,6 +149,13 @@ class LLMGateway:
             parsed, errors = _parse(response, output_model, semantic_check)
             if parsed is not None:
                 return parsed
+        logger.warning(
+            "invalid output prompt=%s request_id=%s checks=%s",
+            template.version_tag,
+            ledger.request_id,
+            # The path only: the rest of a message may echo student words.
+            "; ".join(error.split(":", 1)[0] for error in errors[:_MAX_REPORTED_ERRORS]),
+        )
         raise OutputValidationError(
             f"{template.version_tag} returned invalid output{_after_repairs(policy.max_repairs)}",
             details={"errors": list(errors)[:_MAX_REPORTED_ERRORS]},

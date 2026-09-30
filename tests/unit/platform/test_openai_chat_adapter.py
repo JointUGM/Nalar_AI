@@ -10,7 +10,7 @@ from nalar_ai.platform.llm.anthropic_adapter import AnthropicMessagesAdapter
 from nalar_ai.platform.llm.openai_chat_adapter import (
     OpenAIChatAdapter,
     build_chat_body,
-    fill_missing_nulls,
+    normalize_arguments,
     parse_chat_completion,
 )
 from nalar_ai.platform.llm.ports import (
@@ -231,7 +231,7 @@ NESTED_SCHEMA = {
 def test_fill_missing_nulls_adds_only_omitted_nullable_fields() -> None:
     # SumoPod ignores strict tool schemas, and Claude omits null fields (DECISIONS P10).
     value = {"items": [{"name": "a"}, {"name": "b", "note": "x"}]}
-    assert fill_missing_nulls(value, NESTED_SCHEMA) == {
+    assert normalize_arguments(value, NESTED_SCHEMA) == {
         "items": [{"name": "a", "note": None}, {"name": "b", "note": "x"}],
         "extra": None,  # nullable: filled
         # "label" is required but not nullable: left missing, so validation still fails
@@ -243,6 +243,46 @@ async def test_adapter_fills_omitted_nulls_in_structured_output() -> None:
         payload = _completion(finish_reason="tool_calls", content=None)
         payload["choices"][0]["message"]["tool_calls"] = [
             {"function": {"name": "output", "arguments": '{"items": [], "label": "ok"}'}}
+        ]
+        return httpx.Response(200, json=payload)
+
+    response = await _adapter(handler).complete(_request(json_schema=NESTED_SCHEMA))
+    assert json.loads(response.text) == {"items": [], "label": "ok", "extra": None}
+
+
+def test_normalize_decodes_arrays_and_objects_sent_as_json_strings() -> None:
+    # Claude via SumoPod sometimes JSON-encodes a nested field (DECISIONS P13).
+    value = {"items": '[{"name": "a"}]', "label": "[not decoded]", "extra": "[x]"}
+    assert normalize_arguments(value, NESTED_SCHEMA) == {
+        "items": [{"name": "a", "note": None}],
+        "label": "[not decoded]",  # a string field stays a string
+        "extra": "[x]",
+    }
+
+
+def test_normalize_leaves_undecodable_strings_for_validation_to_reject() -> None:
+    assert normalize_arguments({"items": "[oops"}, NESTED_SCHEMA)["items"] == "[oops"
+
+
+def test_normalize_unwraps_arguments_nested_under_one_unknown_key() -> None:
+    # Claude via SumoPod sometimes nests the whole answer under "$PARAMETER_NAME" (P13).
+    wrapped = {"$PARAMETER_NAME": {"items": [], "label": "ok"}}
+    assert normalize_arguments(wrapped, NESTED_SCHEMA) == {
+        "items": [],
+        "label": "ok",
+        "extra": None,
+    }
+    single: dict[str, Any] = {"label": {"items": []}}  # a real property is never unwrapped
+    assert normalize_arguments(single, NESTED_SCHEMA)["label"] == {"items": []}
+
+
+async def test_adapter_normalizes_a_wrapped_and_stringified_tool_call() -> None:
+    arguments = json.dumps({"$PARAMETER_NAME": {"items": "[]", "label": "ok"}})
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        payload = _completion(finish_reason="tool_calls", content=None)
+        payload["choices"][0]["message"]["tool_calls"] = [
+            {"function": {"name": "output", "arguments": arguments}}
         ]
         return httpx.Response(200, json=payload)
 
