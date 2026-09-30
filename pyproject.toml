@@ -111,12 +111,23 @@ layers = [
 ]
 
 [[tool.importlinter.contracts]]
+name = "S5 layers"
+type = "layers"
+layers = [
+    "nalar_ai.subsystems.s5_insight_synthesizer.api",
+    "nalar_ai.subsystems.s5_insight_synthesizer.infrastructure",
+    "nalar_ai.subsystems.s5_insight_synthesizer.application",
+    "nalar_ai.subsystems.s5_insight_synthesizer.domain",
+]
+
+[[tool.importlinter.contracts]]
 name = "Independent subsystems"
 type = "independence"
 modules = [
     "nalar_ai.subsystems.s1_knowledge_base",
     "nalar_ai.subsystems.s3_socratic_prober",
     "nalar_ai.subsystems.s4_session_evaluator",
+    "nalar_ai.subsystems.s5_insight_synthesizer",
 ]
 
 [[tool.importlinter.contracts]]
@@ -127,5 +138,6 @@ source_modules = [
     "nalar_ai.subsystems.s1_knowledge_base.domain",
     "nalar_ai.subsystems.s3_socratic_prober.domain",
     "nalar_ai.subsystems.s4_session_evaluator.domain",
+    "nalar_ai.subsystems.s5_insight_synthesizer.domain",
 ]
 forbidden_modules = ["fastapi", "httpx", "anthropic", "pymupdf", "tiktoken", "yaml", "nalar_ai.platform"]

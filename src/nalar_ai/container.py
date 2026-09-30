@@ -21,9 +21,16 @@ from nalar_ai.subsystems.s3_socratic_prober.module import PROMPTS_DIR as S3_PROM
 from nalar_ai.subsystems.s3_socratic_prober.module import S3Module, build_s3_module
 from nalar_ai.subsystems.s4_session_evaluator.module import PROMPTS_DIR as S4_PROMPTS_DIR
 from nalar_ai.subsystems.s4_session_evaluator.module import S4Module, build_s4_module
+from nalar_ai.subsystems.s5_insight_synthesizer.module import PROMPTS_DIR as S5_PROMPTS_DIR
+from nalar_ai.subsystems.s5_insight_synthesizer.module import S5Module, build_s5_module
 
 # Every subsystem registers its prompt directory here.
-PROMPT_DIRECTORIES: tuple[Path, ...] = (S1_PROMPTS_DIR, S3_PROMPTS_DIR, S4_PROMPTS_DIR)
+PROMPT_DIRECTORIES: tuple[Path, ...] = (
+    S1_PROMPTS_DIR,
+    S3_PROMPTS_DIR,
+    S4_PROMPTS_DIR,
+    S5_PROMPTS_DIR,
+)
 
 Closer = Callable[[], Awaitable[None]]
 
@@ -40,6 +47,7 @@ class Container:
     s1: S1Module
     s3: S3Module
     s4: S4Module
+    s5: S5Module
     closers: tuple[Closer, ...] = field(default=())
 
     async def aclose(self) -> None:
@@ -92,6 +100,7 @@ def build_container(
         s1=build_s1_module(settings),
         s3=build_s3_module(settings),
         s4=build_s4_module(settings),
+        s5=build_s5_module(settings),
         closers=tuple(closers),
     )
 
