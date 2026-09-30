@@ -24,6 +24,8 @@ class AiPurpose(StrEnum):
     PROBE_PLAN = "probe_plan"
     SESSION_EVALUATION = "session_evaluation"  # base schema label
     REFLECTION_GENERATION = "reflection_generation"  # base schema label
+    CLASS_MAP_INSIGHT = "class_map_insight"  # base schema label
+    PARENT_SUMMARY = "parent_summary"  # base schema label
 
 
 class EvalPurpose(StrEnum):

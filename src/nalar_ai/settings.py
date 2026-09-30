@@ -71,6 +71,11 @@ class Settings(BaseSettings):
     s4_max_answer_chars: int = 1500
     s4_max_quotes_per_score: int = 4
 
+    # S5 policy (design doc s5 §9). Worst case per request: 2 tries x attempts x timeout.
+    s5_insight_timeout_seconds: float = 45.0
+    s5_summary_timeout_seconds: float = 20.0
+    s5_max_attempts: int = 2
+
 
 @lru_cache
 def get_settings() -> Settings:

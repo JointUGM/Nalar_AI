@@ -20,6 +20,7 @@ from nalar_ai.settings import get_settings
 from nalar_ai.subsystems.s1_knowledge_base.api.router import router as s1_router
 from nalar_ai.subsystems.s3_socratic_prober.api.router import router as s3_router
 from nalar_ai.subsystems.s4_session_evaluator.api.router import router as s4_router
+from nalar_ai.subsystems.s5_insight_synthesizer.api.router import router as s5_router
 
 
 @asynccontextmanager
@@ -49,4 +50,5 @@ def create_app(container: Container | None = None) -> FastAPI:
     app.include_router(s1_router)
     app.include_router(s3_router)
     app.include_router(s4_router)
+    app.include_router(s5_router)
     return app
