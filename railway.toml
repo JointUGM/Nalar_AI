@@ -1,0 +1,7 @@
+[build]
+builder = "RAILPACK"
+
+[deploy]
+# ponytail: sh -c so $PORT expands whether or not Railway runs this through a shell
+startCommand = "sh -c 'uvicorn --factory nalar_ai.main:create_app --host 0.0.0.0 --port ${PORT:-8000}'"
+healthcheckPath = "/health"
