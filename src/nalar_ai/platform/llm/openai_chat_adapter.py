@@ -112,18 +112,38 @@ def _allows_null(schema: dict[str, Any]) -> bool:
     )
 
 
-def fill_missing_nulls(
-    value: Any, schema: dict[str, Any], root: dict[str, Any] | None = None
-) -> Any:
-    """Add `null` for required-but-nullable fields the model left out.
+_JSON_KINDS: dict[str, type] = {"array": list, "object": dict}
 
-    SumoPod does not enforce strict tool schemas, and Claude omits null fields
-    (DECISIONS P10). Only nullable fields are filled; anything else still fails validation.
+
+def normalize_arguments(value: Any, schema: dict[str, Any]) -> Any:
+    """Undo Claude's tool-argument quirks, which SumoPod passes on because it does not enforce
+    strict tool schemas (DECISIONS P10, P13):
+
+    - the whole answer nested under one unknown key such as "$PARAMETER_NAME": unwrapped;
+    - an array or object field sent as a JSON string: decoded;
+    - a required-but-nullable field left out: filled with null.
+
+    Anything else is left as it is, so validation still rejects it.
     """
-    root = schema if root is None else root
+    if isinstance(value, dict) and len(value) == 1:
+        ((key, inner),) = value.items()
+        if key not in schema.get("properties", {}) and isinstance(inner, dict):
+            value = inner
+    return _normalize(value, schema, schema)
+
+
+def _normalize(value: Any, schema: dict[str, Any], root: dict[str, Any]) -> Any:
     ref = schema.get("$ref")
     if isinstance(ref, str) and ref.startswith("#/$defs/"):
         schema = root.get("$defs", {}).get(ref.removeprefix("#/$defs/"), {})
+    kind = _JSON_KINDS.get(schema.get("type", ""))
+    if isinstance(value, str) and kind is not None:
+        try:
+            decoded = json.loads(value)
+        except ValueError:
+            decoded = None
+        if isinstance(decoded, kind):
+            value = decoded
     if isinstance(value, dict):
         properties = schema.get("properties", {})
         for name in schema.get("required", ()):
@@ -131,12 +151,12 @@ def fill_missing_nulls(
                 value[name] = None
         for name, sub in properties.items():
             if name in value:
-                value[name] = fill_missing_nulls(value[name], sub, root)
+                value[name] = _normalize(value[name], sub, root)
     elif isinstance(value, list) and isinstance(schema.get("items"), dict):
-        return [fill_missing_nulls(item, schema["items"], root) for item in value]
+        return [_normalize(item, schema["items"], root) for item in value]
     for branch in schema.get("anyOf", ()):
         if branch.get("type") != "null":
-            value = fill_missing_nulls(value, branch, root)
+            value = _normalize(value, branch, root)
     return value
 
 
@@ -191,8 +211,9 @@ class OpenAIChatAdapter:
             parsed = json.loads(result.text)
         except ValueError:
             return result  # the gateway reports it and repairs
-        filled = json.dumps(fill_missing_nulls(parsed, request.json_schema), ensure_ascii=False)
-        return LLMResponse(text=filled, usage=result.usage, stop_reason=result.stop_reason)
+        normalized = normalize_arguments(parsed, request.json_schema)
+        text = json.dumps(normalized, ensure_ascii=False)
+        return LLMResponse(text=text, usage=result.usage, stop_reason=result.stop_reason)
 
     async def aclose(self) -> None:
         await self._client.aclose()

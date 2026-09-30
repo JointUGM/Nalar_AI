@@ -252,7 +252,11 @@ def _misconception(
     if alias is None:
         return None
     if alias not in aliases.misconceptions:
-        errors.append(f"{where}.misconception: {alias!r} is not a listed wrong idea")
+        listed = ", ".join(aliases.misconceptions.aliases())
+        errors.append(
+            f"{where}.misconception: {alias!r} is not a listed wrong idea; "
+            f"give its id ({listed}) or null"
+        )
         return None
     misconception_id = aliases.misconceptions.resolve(alias)
     if aliases.misconception_concept[misconception_id] != concept_id:

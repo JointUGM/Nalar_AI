@@ -1,3 +1,4 @@
+import logging
 import uuid
 
 import pytest
@@ -116,6 +117,25 @@ async def test_semantic_errors_fail_after_one_repair() -> None:
     assert info.value.details["errors"] == ["word must be halo"]
     assert len(ledger.records) == 2
     assert "word must be halo" in llm.requests[1].blocks[-1].text
+
+
+async def test_a_final_invalid_output_logs_which_checks_failed_without_their_text(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # The 2026-09-30 502s were undiagnosable from the logs (P13). Messages may echo student
+    # words, so only the path before the first colon is logged.
+    llm = ScriptedLLM(['{"word": "x"}', '{"word": "y"}'])
+    gateway, _ = _gateway(llm)
+    errors = ["concepts[c2].initial.misconception: 'gayanya habis' is not listed", "no colon"]
+    with (
+        caplog.at_level(logging.WARNING, logger="nalar_ai.llm"),
+        pytest.raises(OutputValidationError),
+    ):
+        await _generate(gateway, UsageLedger("req-9", 1.0), semantic_check=lambda out: errors)
+    (line,) = [r.getMessage() for r in caplog.records if r.name == "nalar_ai.llm"]
+    assert "t.echo@v1" in line and "req-9" in line
+    assert "concepts[c2].initial.misconception" in line and "no colon" in line
+    assert "gayanya" not in line
 
 
 async def test_truncated_output_counts_as_invalid() -> None:

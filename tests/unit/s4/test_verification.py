@@ -198,6 +198,17 @@ def test_a_known_misconception_alias_resolves_on_the_right_concept() -> None:
     assert evaluation.concept_results[0].misconception_id == M_KASAR
 
 
+def test_a_wrong_idea_written_as_text_asks_for_its_id() -> None:
+    # Live 502 on 2026-09-30: the model wrote the student's words instead of "m1" (P13).
+    def as_text(p: dict[str, Any]) -> None:
+        p["concepts"][1].update(initial_misconception="gayanya habis")
+
+    assert _verify(as_text) == [
+        "concepts[c2].initial.misconception: 'gayanya habis' is not a listed wrong idea; "
+        "give its id (m1, m2) or null"
+    ]
+
+
 def test_turn_quality_covers_every_answered_turn_once_with_zero_to_four() -> None:
     def gaps(p: dict[str, Any]) -> None:
         p["turn_quality"] = p["turn_quality"][:4]
