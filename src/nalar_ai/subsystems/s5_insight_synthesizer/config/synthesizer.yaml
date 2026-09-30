@@ -1,0 +1,107 @@
+# S5 guards and fallback (design doc §6, §7). Owned by the pedagogy lead.
+# Bump `version` on every change; the loader rejects a template that fails the guard.
+version: 1
+
+# AI-4: the insight never states a count. Whole-word match after normalize_key
+# ("rata-rata" becomes "rata rata"). Provided names and statements are exempt.
+numbers:
+  number_words:
+    - nol
+    - satu
+    - dua
+    - tiga
+    - empat
+    - lima
+    - enam
+    - tujuh
+    - delapan
+    - sembilan
+    - sepuluh
+    - sebelas
+    - belas
+    - puluh
+    - seratus
+    - ratus
+    - seribu
+    - ribu
+    - juta
+    - setengah
+    - separuh
+    - sepertiga
+    - seperempat
+    - persen
+    - kedua
+    - ketiga
+    - keempat
+    - kelima
+    - berdua
+    - bertiga
+  count_claims:
+    - semua siswa
+    - seluruh siswa
+    - semua murid
+    - seluruh kelas
+    - hampir semua
+    - mayoritas
+    - minoritas
+    - kebanyakan
+    - sebagian besar
+    - sebagian kecil
+    - banyak siswa
+    - sedikit siswa
+    - setiap siswa
+    - tidak ada siswa
+    - tak seorang pun
+
+insight:
+  narrative_max_words: 120
+  explanation_max_words: 50
+  name_max_words: 8
+  max_clusters: 6
+
+# Parent summaries check digits, not number words: "satu sesi" is not a count of students.
+summary:
+  min_words: 60
+  max_words: 150
+  # Scores and integrity (affixed forms match too: "nilainya", "menyontek").
+  banned_terms:
+    - nilai
+    - skor
+    - poin
+    - peringkat
+    - ranking
+    - level
+    - curang
+    - menyontek
+    - mencontek
+    - nyontek
+    - salin
+    - copas
+    - plagiat
+    - integritas
+    - chatgpt
+    - kecerdasan buatan
+  # Comparisons with classmates (whole phrase).
+  comparison_phrases:
+    - teman sekelas
+    - teman temannya
+    - teman lain
+    - siswa lain
+    - anak lain
+    - murid lain
+    - rata rata
+    - dibandingkan
+    - dibanding
+    - lebih baik dari
+    - lebih pintar
+    - paling pintar
+    - paling baik
+    - terbaik
+    - tertinggi
+    - terendah
+    - juara
+  template:
+    opening: Ananda telah menyelesaikan satu sesi penalaran sains di NALAR bersama gurunya.
+    understood: Dalam sesi ini, Ananda sudah menunjukkan pemahaman tentang {concepts}.
+    developing: Ananda masih mengembangkan pemahaman tentang {concepts}, dan itu wajar dalam proses belajar.
+    home: Di rumah, Anda bisa mengajak Ananda bercerita tentang {concept} dengan contoh dari kehidupan sehari-hari, lalu bertanya, "Mengapa kamu berpikir begitu?"
