@@ -15,7 +15,7 @@ def test_openapi_json_is_committed_and_up_to_date() -> None:
 def test_every_v1_operation_requires_the_service_key() -> None:
     schema = json.loads(render())
     v1 = {path: ops for path, ops in schema["paths"].items() if path.startswith("/v1/")}
-    assert len(v1) == 12
+    assert len(v1) == 14
     for path, operations in v1.items():
         for operation in operations.values():
             names = {parameter["name"] for parameter in operation.get("parameters", [])}

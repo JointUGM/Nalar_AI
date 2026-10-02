@@ -264,6 +264,24 @@ def test_normalize_leaves_undecodable_strings_for_validation_to_reject() -> None
     assert normalize_arguments({"items": "[oops"}, NESTED_SCHEMA)["items"] == "[oops"
 
 
+def test_normalize_unwraps_only_redundant_array_field_wrappers() -> None:
+    assert normalize_arguments({"items": {"items": [{"name": "a"}]}}, NESTED_SCHEMA)["items"] == [
+        {"name": "a", "note": None}
+    ]
+    invalid_values: tuple[dict[str, Any], ...] = (
+        {"other": []},
+        {"items": "invalid"},
+        {"items": [], "extra": 1},
+    )
+    for invalid in invalid_values:
+        assert normalize_arguments({"items": invalid}, NESTED_SCHEMA)["items"] == invalid
+    schema = {
+        "type": "object",
+        "properties": {"box": {"type": "object", "properties": {"box": {"type": "array"}}}},
+    }
+    assert normalize_arguments({"box": {"box": []}}, schema) == {"box": {"box": []}}
+
+
 def test_normalize_unwraps_arguments_nested_under_one_unknown_key() -> None:
     # Claude via SumoPod sometimes nests the whole answer under "$PARAMETER_NAME" (P13).
     wrapped = {"$PARAMETER_NAME": {"items": [], "label": "ok"}}

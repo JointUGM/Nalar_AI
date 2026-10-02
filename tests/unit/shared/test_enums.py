@@ -28,6 +28,8 @@ def test_chunk_kind_labels_match_migration_003() -> None:
 
 def test_ai_purposes_exist_in_the_schema_and_migrations_002_and_003() -> None:
     assert {purpose.value for purpose in AiPurpose} == {
+        "mission_generation",
+        "mission_critic",
         "kb_extract",
         "kb_misconceptions",
         "cp_align",

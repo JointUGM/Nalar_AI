@@ -1,0 +1,29 @@
+verdict_terms:
+  - benar
+  - betul
+  - salah
+  - keliru
+  - tepat
+  - tepat sekali
+  - kurang tepat
+  - yang benar adalah
+  - jawabannya adalah
+  - bagus
+  - hebat
+  - pintar
+  - pinter
+  - mantap
+  - sudah benar
+  - hampir benar
+  - hampir
+  - iya betul
+  - bukan begitu
+  - coba lagi
+  - coba pikir lagi
+  - sip
+  - keren
+  - nah itu
+question_max_chars: 500
+question_max_sentences: 3
+anchor_max_chars: 4000
+anchor_max_sentences: 10

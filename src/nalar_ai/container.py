@@ -17,6 +17,8 @@ from nalar_ai.settings import Settings
 from nalar_ai.shared.enums import ModelTier
 from nalar_ai.subsystems.s1_knowledge_base.module import PROMPTS_DIR as S1_PROMPTS_DIR
 from nalar_ai.subsystems.s1_knowledge_base.module import S1Module, build_s1_module
+from nalar_ai.subsystems.s2_mission_designer.module import PROMPTS_DIR as S2_PROMPTS_DIR
+from nalar_ai.subsystems.s2_mission_designer.module import S2Module, build_s2_module
 from nalar_ai.subsystems.s3_socratic_prober.module import PROMPTS_DIR as S3_PROMPTS_DIR
 from nalar_ai.subsystems.s3_socratic_prober.module import S3Module, build_s3_module
 from nalar_ai.subsystems.s4_session_evaluator.module import PROMPTS_DIR as S4_PROMPTS_DIR
@@ -27,6 +29,7 @@ from nalar_ai.subsystems.s5_insight_synthesizer.module import S5Module, build_s5
 # Every subsystem registers its prompt directory here.
 PROMPT_DIRECTORIES: tuple[Path, ...] = (
     S1_PROMPTS_DIR,
+    S2_PROMPTS_DIR,
     S3_PROMPTS_DIR,
     S4_PROMPTS_DIR,
     S5_PROMPTS_DIR,
@@ -45,6 +48,7 @@ class Container:
     embeddings: EmbeddingService
     tokens: TokenCounter
     s1: S1Module
+    s2: S2Module
     s3: S3Module
     s4: S4Module
     s5: S5Module
@@ -98,6 +102,7 @@ def build_container(
         embeddings=embeddings,
         tokens=TokenCounter(),
         s1=build_s1_module(settings),
+        s2=build_s2_module(settings),
         s3=build_s3_module(settings),
         s4=build_s4_module(settings),
         s5=build_s5_module(settings),
