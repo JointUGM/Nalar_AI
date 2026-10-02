@@ -121,6 +121,7 @@ def normalize_arguments(value: Any, schema: dict[str, Any]) -> Any:
 
     - the whole answer nested under one unknown key such as "$PARAMETER_NAME": unwrapped;
     - an array or object field sent as a JSON string: decoded;
+    - an array nested under a redundant copy of its own field name: unwrapped;
     - a required-but-nullable field left out: filled with null.
 
     Anything else is left as it is, so validation still rejects it.
@@ -151,6 +152,18 @@ def _normalize(value: Any, schema: dict[str, Any], root: dict[str, Any]) -> Any:
                 value[name] = None
         for name, sub in properties.items():
             if name in value:
+                field_schema = sub
+                field_ref = sub.get("$ref")
+                if isinstance(field_ref, str) and field_ref.startswith("#/$defs/"):
+                    field_schema = root.get("$defs", {}).get(field_ref.removeprefix("#/$defs/"), {})
+                field = value[name]
+                if (
+                    field_schema.get("type") == "array"
+                    and isinstance(field, dict)
+                    and list(field) == [name]
+                    and isinstance(field[name], list)
+                ):
+                    value[name] = field[name]
                 value[name] = _normalize(value[name], sub, root)
     elif isinstance(value, list) and isinstance(schema.get("items"), dict):
         return [_normalize(item, schema["items"], root) for item in value]

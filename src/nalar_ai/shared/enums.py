@@ -15,6 +15,8 @@ class ChunkKind(StrEnum):
 
 
 class AiPurpose(StrEnum):
+    MISSION_GENERATION = "mission_generation"
+    MISSION_CRITIC = "mission_critic"
     KB_EXTRACT = "kb_extract"
     KB_MISCONCEPTIONS = "kb_misconceptions"
     CP_ALIGN = "cp_align"

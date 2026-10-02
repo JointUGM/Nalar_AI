@@ -101,6 +101,16 @@ layers = [
 ]
 
 [[tool.importlinter.contracts]]
+name = "S2 layers"
+type = "layers"
+layers = [
+    "nalar_ai.subsystems.s2_mission_designer.api",
+    "nalar_ai.subsystems.s2_mission_designer.infrastructure",
+    "nalar_ai.subsystems.s2_mission_designer.application",
+    "nalar_ai.subsystems.s2_mission_designer.domain",
+]
+
+[[tool.importlinter.contracts]]
 name = "S4 layers"
 type = "layers"
 layers = [
@@ -125,6 +135,7 @@ name = "Independent subsystems"
 type = "independence"
 modules = [
     "nalar_ai.subsystems.s1_knowledge_base",
+    "nalar_ai.subsystems.s2_mission_designer",
     "nalar_ai.subsystems.s3_socratic_prober",
     "nalar_ai.subsystems.s4_session_evaluator",
     "nalar_ai.subsystems.s5_insight_synthesizer",
@@ -136,6 +147,7 @@ type = "forbidden"
 source_modules = [
     "nalar_ai.shared",
     "nalar_ai.subsystems.s1_knowledge_base.domain",
+    "nalar_ai.subsystems.s2_mission_designer.domain",
     "nalar_ai.subsystems.s3_socratic_prober.domain",
     "nalar_ai.subsystems.s4_session_evaluator.domain",
     "nalar_ai.subsystems.s5_insight_synthesizer.domain",

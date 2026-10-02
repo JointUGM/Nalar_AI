@@ -1,0 +1,59 @@
+{
+  "learning_objective": "Siswa menjelaskan mengapa benda yang didorong dapat melambat setelah tangan dilepaskan dan membandingkan gerak pada permukaan berbeda.",
+  "targets": [
+    {
+      "id": "00000000-0000-0000-0000-000000000001",
+      "name": "Gaya gesek",
+      "description": "Interaksi dua permukaan menghambat gerak relatif benda.",
+      "source_chunk_ids": [
+        "00000000-0000-0000-0000-000000000005"
+      ]
+    },
+    {
+      "id": "00000000-0000-0000-0000-000000000002",
+      "name": "Inersia",
+      "description": "Kecenderungan benda mempertahankan keadaan geraknya jika resultan gaya nol.",
+      "source_chunk_ids": [
+        "00000000-0000-0000-0000-000000000006"
+      ]
+    }
+  ],
+  "misconceptions": [
+    {
+      "id": "00000000-0000-0000-0000-000000000003",
+      "concept_id": "00000000-0000-0000-0000-000000000001",
+      "statement": "Benda berhenti karena dorongannya habis.",
+      "correct_understanding": "Benda melambat karena ada gaya luar yang melawan gerak, seperti gesekan.",
+      "source_chunk_ids": [
+        "00000000-0000-0000-0000-000000000005"
+      ]
+    },
+    {
+      "id": "00000000-0000-0000-0000-000000000004",
+      "concept_id": "00000000-0000-0000-0000-000000000002",
+      "statement": "Benda selalu memerlukan dorongan terus-menerus agar tetap bergerak.",
+      "correct_understanding": "Jika resultan gaya nol, benda mempertahankan kecepatannya.",
+      "source_chunk_ids": [
+        "00000000-0000-0000-0000-000000000006"
+      ]
+    }
+  ],
+  "paragraphs": [
+    {
+      "id": "00000000-0000-0000-0000-000000000005",
+      "kind": "example",
+      "page_start": 1,
+      "page_end": 1,
+      "heading_path": "Gerak benda",
+      "content": "Kotak yang didorong di lantai kasar biasanya lebih cepat berhenti daripada kotak yang sama di lantai halus. Saat dua permukaan saling bergerak, gaya gesek dapat melawan arah gerak. Dorongan tangan berhenti saat tangan dilepaskan, tetapi bukan berarti kotak langsung berhenti."
+    },
+    {
+      "id": "00000000-0000-0000-0000-000000000006",
+      "kind": "explanation",
+      "page_start": 2,
+      "page_end": 2,
+      "heading_path": "Gerak benda",
+      "content": "Benda cenderung mempertahankan keadaan geraknya. Jika tidak ada resultan gaya luar, benda diam tetap diam dan benda bergerak tetap bergerak dengan kecepatan tetap. Pada lantai sehari-hari, gesekan dapat membuat benda yang meluncur melambat. Efek ini tidak berarti gaya dorong tersimpan lalu habis."
+    }
+  ]
+}

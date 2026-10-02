@@ -52,6 +52,11 @@ class Settings(BaseSettings):
     s1_max_section_claude_tokens: int = 80_000
     s1_evidence_pack_claude_tokens: int = 3_000
 
+    s2_generate_timeout_seconds: float = 45.0
+    s2_critic_timeout_seconds: float = 25.0
+    s2_grounding_tokens: int = 2000
+    s2_paragraphs_per_target: int = 3
+
     # S3 policy (design doc s3 §8, §11, §13). Starting points, tuned on the pilot.
     s3_turn_budget_seconds: float = 4.5
     s3_classify_timeout_seconds: float = 2.0
