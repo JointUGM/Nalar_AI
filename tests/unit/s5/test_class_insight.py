@@ -46,8 +46,8 @@ async def test_a_clean_insight_comes_back_with_ids() -> None:
     assert result.insight.narrative.startswith(f"{{{{count:{M_HABIS}}}}} dari {{{{total}}}}")
     (record,) = ledger.records
     assert record.purpose is AiPurpose.CLASS_MAP_INSIGHT
-    assert record.model == MODELS[ModelTier.QUALITY]
-    assert record.prompt_version == "s5.class_insight@v2"
+    assert record.model == MODELS[ModelTier.FAST]
+    assert record.prompt_version == "s5.class_insight@v3"
     assert len(llm.requests) == 1 and len(result.insight.suggestions) == 1
 
 
@@ -65,6 +65,8 @@ async def test_the_prompt_carries_fenced_teacher_text_and_the_counts() -> None:
         "    holds it now 10, changed their mind during the session 4"
     ) in task
     assert "Problems with your previous attempt, if any:\n(none)" in task
+    assert ", ".join(CONFIG.numbers.number_words) in task
+    assert ", ".join(CONFIG.numbers.count_claims) in task
 
 
 async def test_a_leaky_draft_gets_one_retry_with_the_problems() -> None:
@@ -72,6 +74,7 @@ async def test_a_leaky_draft_gets_one_retry_with_the_problems() -> None:
     result = await _run(llm)
     assert result.retried is True
     assert "- narrative: write no digits" in llm.requests[1].blocks[-1].text
+    assert '<previous_draft>\n{"narrative":' in llm.requests[1].blocks[-1].text
 
 
 async def test_two_leaky_drafts_fail_with_ai_output_invalid() -> None:

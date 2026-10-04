@@ -65,13 +65,15 @@ class ClassInsightUseCase:
             "total": str(counts.total),
             "incomplete": str(counts.incomplete),
             "counts": counts_block(counts),
+            "forbidden_numbers": ", ".join(self._config.numbers.number_words),
+            "forbidden_counts": ", ".join(self._config.numbers.count_claims),
         }
-        feedback, problems = "(none)", ["no attempt"]
+        feedback, draft, problems = "(none)", "(none)", ["no attempt"]
         for attempt in range(TRIES):
             try:
                 out = await self._llm.generate(
                     prompt_id=self.PROMPT_ID,
-                    variables={**variables, "feedback": feedback},
+                    variables={**variables, "feedback": feedback, "draft": draft},
                     output_model=InsightDraftOut,
                     ledger=ledger,
                     policy=self._policy.insight_call(),
@@ -95,6 +97,7 @@ class ClassInsightUseCase:
                 )
                 if insight is not None:
                     return InsightResult(insight, retried=attempt > 0)
+                draft = fence_untrusted("previous_draft", out.model_dump_json())
             # Problems name aliases and lexicon terms only, never teacher or student text.
             logger.warning(
                 "s5 guard prompt=%s request_id=%s checks=%s",
