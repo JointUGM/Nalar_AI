@@ -4,7 +4,8 @@
 
 Every session is evaluated --runs times. Reports consistency (runs >= 2), agreement with
 `teacher_levels` where given, the reflection fallback rate, cost and latency.
-Exit code 1 when a gate that has data fails.
+At least two successful runs are required for consistency. Missing teacher scores are
+reported as a skipped gate. Exit code 1 when a required gate fails or lacks evidence.
 """
 
 import argparse
@@ -72,11 +73,13 @@ async def run_evaluations(
     gates = {
         "quotes_verbatim": unverified_quotes == 0,
         "no_failures": not failures,
+        "consistency": consistent is not None and consistent >= GATES["consistency"],
     }
-    if consistent is not None:
-        gates["consistency"] = consistent >= GATES["consistency"]
+    skipped_gates = {}
     if agreement is not None:
         gates["teacher_within_one"] = agreement["within_one"] >= GATES["teacher_within_one"]
+    else:
+        skipped_gates["teacher_within_one"] = "no teacher-labelled scores"
     return {
         "sessions": len(cases),
         "runs": runs,
@@ -85,8 +88,12 @@ async def run_evaluations(
         "reflection_fallback_rate": round(fallbacks / reflections, 4) if reflections else None,
         "failures": failures,
         "cost_usd_per_session": round(sum(costs) / len(costs), 6) if costs else None,
-        "latency_s": {"p50": percentile(latencies, 50), "p95": percentile(latencies, 95)},
+        "latency_s": {
+            "p50": percentile(latencies, 50) if latencies else None,
+            "p95": percentile(latencies, 95) if latencies else None,
+        },
         "gates": gates,
+        "skipped_gates": skipped_gates,
         "passed": all(gates.values()),
     }
 

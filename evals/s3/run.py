@@ -45,7 +45,10 @@ from nalar_ai.subsystems.s3_socratic_prober.application.classify_answer import (
     ClassifyAnswerUseCase,
 )
 from nalar_ai.subsystems.s3_socratic_prober.application.next_turn import NextTurnUseCase
-from nalar_ai.subsystems.s3_socratic_prober.domain.classification import Classification
+from nalar_ai.subsystems.s3_socratic_prober.domain.classification import (
+    Classification,
+    ClassificationSource,
+)
 from nalar_ai.subsystems.s3_socratic_prober.domain.moves import AnswerType
 from nalar_ai.subsystems.s3_socratic_prober.domain.pack import ContextPack
 from nalar_ai.subsystems.s3_socratic_prober.domain.prefilter import prefilter
@@ -68,7 +71,7 @@ async def run_classify(
         max_answer_chars=policy.max_answer_chars,
     )
     rows: list[dict[str, Any]] = []
-    pairs: list[tuple[AnswerType, AnswerType]] = []
+    pairs: list[tuple[AnswerType, AnswerType | None]] = []
     for number, item in enumerate(items):
         view = SessionView((HistoryTurn(0, TurnKind.ANCHOR, item.question, item.answer),))
         hit = prefilter(item.answer, container.s3.config.prefilter)
@@ -82,12 +85,18 @@ async def run_classify(
                 timeout_s=CLASSIFY_TIMEOUT_S,
             )
         )
-        pairs.append((item.answer_type, result.answer_type))
+        pairs.append(
+            (
+                item.answer_type,
+                result.answer_type if result.source is not ClassificationSource.FALLBACK else None,
+            )
+        )
         rows.append(
             {
                 "answer": item.answer,
                 "expected": item.answer_type.value,
                 "predicted": result.answer_type.value,
+                "source": result.source.value,
                 "misconception_ok": (
                     not item.misconception_ids
                     or result.primary_misconception in item.misconception_ids
@@ -108,7 +117,11 @@ async def run_classify(
             if with_misconceptions
             else None
         ),
-        "errors": [r for r in rows if r["expected"] != r["predicted"]],
+        "errors": [
+            r
+            for r in rows
+            if r["expected"] != r["predicted"] or r["source"] == ClassificationSource.FALLBACK.value
+        ],
         "gates": {"classification_accuracy": passed},
         "passed": passed,
     }

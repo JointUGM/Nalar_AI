@@ -42,6 +42,15 @@ async def test_a_clean_summary_is_used_as_written() -> None:
     assert record.model == MODELS[ModelTier.FAST]
 
 
+async def test_saling_does_not_trigger_a_retry_or_template() -> None:
+    text = SUMMARY + " Gaya dan gerak saling berkaitan dalam kegiatan sehari-hari."
+    llm = ScriptedLLM([summary_reply(text)])
+    ledger = UsageLedger("r", 1.0)
+    result = await _run(llm, ledger=ledger)
+    assert (result.content, result.source, result.retried) == (text, "model", False)
+    assert len(llm.requests) == len(ledger.records) == 1
+
+
 async def test_the_prompt_fences_teacher_text_and_describes_each_outcome() -> None:
     llm = ScriptedLLM([summary_reply()])
     await _run(llm)

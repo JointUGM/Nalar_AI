@@ -89,16 +89,17 @@ def parse_chat_completion(payload: dict[str, Any]) -> LLMResponse:
         output_tokens = int(usage.get("completion_tokens") or 0)
     except (KeyError, IndexError, TypeError, AttributeError, ValueError) as exc:
         raise PermanentLLMError(f"malformed chat completion: {exc!r}") from exc
-    if finish_reason in _REFUSALS:
-        raise PermanentLLMError("the model refused the request")
+    parsed_usage = LLMUsage(
+        input_tokens=max(prompt_tokens - cache_read - cache_write, 0),
+        output_tokens=output_tokens,
+        cache_read_tokens=cache_read,
+        cache_write_tokens=cache_write,
+    )
+    if finish_reason in _REFUSALS or message.get("refusal"):
+        raise PermanentLLMError("the model refused the request", usage=parsed_usage)
     return LLMResponse(
         text=text,
-        usage=LLMUsage(
-            input_tokens=max(prompt_tokens - cache_read - cache_write, 0),
-            output_tokens=output_tokens,
-            cache_read_tokens=cache_read,
-            cache_write_tokens=cache_write,
-        ),
+        usage=parsed_usage,
         stop_reason="max_tokens" if finish_reason == "length" else finish_reason,
     )
 

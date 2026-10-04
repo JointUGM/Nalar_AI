@@ -2,7 +2,7 @@
 # Owned by the pedagogy lead. Bump `version` on every change; it is logged with each turn.
 # Phrases are matched as whole words after normalisation (case, punctuation and extra spaces
 # are ignored), so "Kasih tau jawabannya!!" matches "kasih tau jawabannya".
-version: 1
+version: 2
 
 prefilter:
   # An answer this short (after normalisation) is evasive: "", "?", "-", "ok".
@@ -17,11 +17,19 @@ prefilter:
     - ingin mati
     - pengen mati
     - pingin mati
+    - aku mau mati
+    - saya mau mati
     - mau mati aja
     - mending mati
     - gak mau hidup
     - ga mau hidup
     - tidak mau hidup lagi
+    - aku tidak mau hidup
+    - saya tidak mau hidup
+    - aku nggak mau hidup
+    - saya nggak mau hidup
+    - aku enggak mau hidup
+    - saya enggak mau hidup
     - menyakiti diri
     - melukai diri
     - sakiti diriku

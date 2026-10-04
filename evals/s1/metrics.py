@@ -20,7 +20,7 @@ class RecallReport:
 
     @property
     def recall(self) -> float:
-        return 1.0 if self.total == 0 else self.matched / self.total
+        return self.matched / self.total if self.total else 0.0
 
 
 def match_recall(
@@ -68,10 +68,9 @@ def kind_report(labels: Sequence[KindLabel], chunks: Sequence[ChunkRow]) -> Kind
         if label.kind in RESTRICTED:
             restricted_total += 1
             restricted_hit += chunk[3] in RESTRICTED
-    matched = len(labels) - len(unmatched)
     return KindReport(
-        accuracy=correct / matched if matched else 1.0,
-        restricted_recall=restricted_hit / restricted_total if restricted_total else 1.0,
+        accuracy=correct / len(labels) if labels else 0.0,
+        restricted_recall=restricted_hit / restricted_total if restricted_total else 0.0,
         unmatched=tuple(unmatched),
     )
 
@@ -79,6 +78,6 @@ def kind_report(labels: Sequence[KindLabel], chunks: Sequence[ChunkRow]) -> Kind
 def recall_at_k(ranked: Sequence[Sequence[str]], gold: Sequence[set[str]], k: int) -> float:
     """Share of queries whose top-k contains at least one gold id (piece lookup, CP recall)."""
     if not ranked:
-        return 1.0
+        return 0.0
     hits = sum(1 for ids, wanted in zip(ranked, gold, strict=True) if wanted & set(ids[:k]))
     return hits / len(ranked)

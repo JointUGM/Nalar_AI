@@ -234,9 +234,9 @@ class ExtractConceptsUseCase:
         )
         rejected_listing = "\n".join(f"- {r.name}" for r in command.rejected_concepts)
         variables = {
-            "subject": command.subject,
-            "phase": command.phase,
-            "section_title": command.section_title,
+            "subject": fence_untrusted("subject", command.subject),
+            "phase": fence_untrusted("phase", command.phase),
+            "section_title": fence_untrusted("section_title", command.section_title),
             "material": material,
             "existing_concepts": fence_untrusted("existing_concepts", existing_listing)
             if existing_listing

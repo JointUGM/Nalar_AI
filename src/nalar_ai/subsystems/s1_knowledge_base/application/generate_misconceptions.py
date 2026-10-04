@@ -112,6 +112,8 @@ def validate_misconceptions(
         statement_key = normalize_key(item.statement)
         if not statement_key:
             errors.append(f"{label}: statement is empty")
+        if not normalize_key(item.correct_understanding):
+            errors.append(f"{label}: correct_understanding is empty")
         if statement_key == normalize_key(item.correct_understanding):
             errors.append(f"{label}: statement and correct_understanding must differ")
         if statement_key in seen:
@@ -214,8 +216,8 @@ class GenerateMisconceptionsUseCase:
         output = await self._llm.generate(
             prompt_id=self.PROMPT_ID,
             variables={
-                "subject": command.subject,
-                "phase": command.phase,
+                "subject": fence_untrusted("subject", command.subject),
+                "phase": fence_untrusted("phase", command.phase),
                 "material": render_material(evidence, chunk_aliases),
                 "concept": fence_untrusted("concept", f"{concept.name}: {concept.description}"),
                 "library": _render_library(library, library_aliases),

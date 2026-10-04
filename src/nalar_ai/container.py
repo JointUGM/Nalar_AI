@@ -83,6 +83,7 @@ def build_container(
         },
         native_structured_output=settings.structured_output == "native",
         max_attempts=settings.llm_max_attempts,
+        default_timeout_s=settings.llm_timeout_seconds,
         concurrency=settings.llm_concurrency,
         live_concurrency=settings.llm_live_concurrency,
         scoring_concurrency=settings.llm_scoring_concurrency,
@@ -94,6 +95,7 @@ def build_container(
         dimensions=settings.embedding_dimensions,
         max_attempts=settings.llm_max_attempts,
         provider=settings.llm_provider,
+        default_timeout_s=settings.llm_timeout_seconds,
     )
     return Container(
         settings=settings,

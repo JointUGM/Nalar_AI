@@ -56,6 +56,42 @@ async def test_openai_compat_sorts_by_index_and_reads_usage() -> None:
     }
 
 
+@pytest.mark.parametrize("indices", [[0, 0], [0, 2], [-1, 0], [0.5, 1], [False, 1], ["0", 1]])
+@respx.mock
+async def test_openai_compat_rejects_invalid_embedding_indices(indices: list[object]) -> None:
+    respx.post(f"{BASE}/embeddings").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "data": [{"index": index, "embedding": [1.0, 0.0]} for index in indices],
+                "usage": {"total_tokens": 7},
+            },
+        )
+    )
+    async with httpx.AsyncClient() as client:
+        embedder = OpenAICompatEmbedder(client, base_url=BASE, api_key="k")
+        with pytest.raises(PermanentEmbeddingError, match="indices"):
+            await embedder.embed(["a", "b"], model=MODEL, dimensions=2)
+
+
+@respx.mock
+async def test_openai_compat_rejects_vectors_from_a_different_model() -> None:
+    respx.post(f"{BASE}/embeddings").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "model": "different-model",
+                "data": [{"index": 0, "embedding": [1.0, 0.0]}],
+                "usage": {"total_tokens": 7},
+            },
+        )
+    )
+    async with httpx.AsyncClient() as client:
+        embedder = OpenAICompatEmbedder(client, base_url=BASE, api_key="k")
+        with pytest.raises(PermanentEmbeddingError, match="model"):
+            await embedder.embed(["a"], model=MODEL, dimensions=2)
+
+
 @respx.mock
 async def test_openai_compat_maps_status_codes() -> None:
     route = respx.post(f"{BASE}/embeddings")

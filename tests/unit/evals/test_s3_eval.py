@@ -28,7 +28,7 @@ from evals.s4.data import load_cases
 from nalar_ai.container import Container, build_container
 from nalar_ai.platform.embeddings.fakes import HashingEmbedder
 from nalar_ai.platform.llm.fakes import Reply, ScriptedLLM
-from nalar_ai.platform.llm.ports import LLMRequest
+from nalar_ai.platform.llm.ports import LLMRequest, PermanentLLMError
 from nalar_ai.settings import Settings
 from nalar_ai.shared.enums import EvalPurpose, MoveSource, PlannerMode
 from nalar_ai.shared.provenance import UsageLedger
@@ -229,8 +229,137 @@ def test_percentile_and_accuracy() -> None:
     assert percentile([3.0, 1.0, 2.0, 4.0], 50) == 2.0
     assert percentile([3.0, 1.0, 2.0, 4.0], 95) == 4.0
     assert math.isnan(percentile([], 50))
-    assert accuracy([]) == 1.0
+    assert accuracy([]) == 0.0
     assert accuracy([(AnswerType.EVASIVE, AnswerType.EVASIVE)]) == 1.0
+
+
+async def test_empty_classification_dataset_fails_the_gate(settings: Settings) -> None:
+    llm = ScriptedLLM()
+    report = await run_classify(_container(settings, llm), make_pack(), [])
+    assert report["type_accuracy"] == 0.0
+    assert report["passed"] is False
+    assert llm.requests == []
+
+
+async def test_failed_classifier_does_not_match_unsure_gold(settings: Settings) -> None:
+    llm = ScriptedLLM([PermanentLLMError("provider unavailable")])
+    report = await run_classify(
+        _container(settings, llm),
+        make_pack(),
+        [LabelledAnswer("Kenapa berhenti?", "mungkin lantainya", AnswerType.UNSURE, ())],
+    )
+    assert report["type_accuracy"] == 0.0
+    assert report["passed"] is False
+    assert len(report["errors"]) == 1
+
+
+def test_empty_sessions_fail_without_nan_latency(settings: Settings) -> None:
+    container = _container(settings, ScriptedLLM())
+    report = session_report([], make_pack(), container.s3.config.guard)
+    assert report["coverage"] == 0.0
+    assert report["gates"]["coverage"] is False
+    assert report["gates"]["valid_choices"] is False
+    assert report["passed"] is False
+    assert report["turn_latency_p50_s"] is None
+    assert report["turn_latency_p95_s"] is None
+    json.dumps(report, allow_nan=False)
+
+
+async def test_unfinished_session_cannot_establish_coverage(settings: Settings) -> None:
+    container = _container(settings, ScriptedLLM(route=_fake_prober))
+    trace = await run_session(
+        _use_case(container),
+        make_pack(),
+        ScriptedStudent(["gatau"]),
+        name="unfinished",
+        mode=PlannerMode.TABLE,
+        max_turns=1,
+    )
+    assert trace.final.action is TurnAction.PROBE
+    report = session_report([trace], make_pack(), container.s3.config.guard)
+    assert report["finished"] == 0
+    assert report["coverage"] == 0.0
+    assert report["gates"]["coverage"] is False
+    assert report["passed"] is False
+
+
+@pytest.mark.parametrize("mode", [PlannerMode.HYBRID, PlannerMode.TABLE])
+async def test_provider_outage_cannot_establish_valid_choices(
+    settings: Settings, mode: PlannerMode
+) -> None:
+    container = _container(
+        settings, ScriptedLLM(route=lambda request: PermanentLLMError("provider unavailable"))
+    )
+    report = await run_sessions(
+        container,
+        make_pack(),
+        scripted_students([StudentScript("outage", "normal", ("karena lantainya",))]),
+        mode=mode,
+        judge=False,
+    )
+    assert report["coverage"] == 1.0  # Approved fallbacks still protect session coverage.
+    assert report["valid_choices"] == 0.0
+    assert report["gates"]["valid_choices"] is False
+    assert report["passed"] is False
+
+
+@pytest.mark.parametrize("mode", [PlannerMode.HYBRID, PlannerMode.TABLE])
+async def test_prefilter_only_sessions_have_valid_rule_choices(
+    settings: Settings, mode: PlannerMode
+) -> None:
+    llm = ScriptedLLM()
+    report = await run_sessions(
+        _container(settings, llm),
+        make_pack(),
+        scripted_students([StudentScript("prefilter", "steering", ("gatau",))]),
+        mode=mode,
+        judge=False,
+    )
+    assert report["valid_choices"] == 1.0
+    assert report["passed"] is True
+    assert llm.requests == []
+
+
+async def test_table_mode_needs_no_writer_for_valid_choices(settings: Settings) -> None:
+    llm = ScriptedLLM(route=_fake_prober)
+    report = await run_sessions(
+        _container(settings, llm),
+        make_pack(),
+        scripted_students([StudentScript("table", "normal", ("karena lantainya",))]),
+        mode=PlannerMode.TABLE,
+        judge=False,
+    )
+    assert report["valid_choices"] == 1.0
+    assert report["passed"] is True
+    assert all(request.system.startswith("You label one answer") for request in llm.requests)
+
+
+async def test_safety_pauses_do_not_supply_or_reduce_finished_coverage(settings: Settings) -> None:
+    container = _container(settings, ScriptedLLM())
+    paused = await run_session(
+        _use_case(container),
+        make_pack(),
+        ScriptedStudent(["aku ingin mati"]),
+        name="safety",
+        mode=PlannerMode.TABLE,
+    )
+    assert paused.final.action is TurnAction.SAFETY_PAUSE
+    paused_report = session_report([paused], make_pack(), container.s3.config.guard)
+    assert paused_report["safety_pauses"] == 1
+    assert paused_report["gates"]["coverage"] is False
+    assert paused_report["passed"] is False
+
+    finished = await run_session(
+        _use_case(container),
+        make_pack(),
+        ScriptedStudent(["gatau"]),
+        name="finished",
+        mode=PlannerMode.TABLE,
+    )
+    mixed_report = session_report([paused, finished], make_pack(), container.s3.config.guard)
+    assert mixed_report["finished"] == 1
+    assert mixed_report["coverage"] == 1.0
+    assert mixed_report["passed"] is True
 
 
 async def test_transcripts_are_valid_s4_eval_input(settings: Settings, tmp_path: Path) -> None:
