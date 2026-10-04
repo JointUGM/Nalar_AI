@@ -107,7 +107,10 @@ def check_insight(
             f"{label} explanation", draft.explanation, limits.explanation_max_words
         )
         if not draft.misconceptions:
-            problems.append(f"{label}: name at least one idea")
+            problems.append(
+                f"{label}: misconceptions must contain a currently-held idea alias; "
+                "otherwise omit this entire cluster"
+            )
         ids: list[UUID] = []
         for written in draft.misconceptions:
             alias = written.strip().casefold()

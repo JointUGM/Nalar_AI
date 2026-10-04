@@ -3,7 +3,7 @@
 import logging
 from dataclasses import dataclass
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from nalar_ai.platform.llm.gateway import LLMGateway
 from nalar_ai.shared.errors import InvalidInputError, OutputValidationError
@@ -26,15 +26,27 @@ logger = logging.getLogger("nalar_ai.s5")
 
 
 class ClusterDraftOut(BaseModel):
-    name: str
-    explanation: str
-    misconceptions: list[str]
+    name: str = Field(
+        description="Name of a currently-held misconception group, never a mastered concept."
+    )
+    explanation: str = Field(
+        description="Explain the mistaken reasoning in Bahasa Indonesia, without numerical words or digits."
+    )
+    misconceptions: list[str] = Field(
+        description="Nonempty array of allowed currently-held idea aliases from the task. Omit the entire cluster when none applies."
+    )
 
 
 class InsightDraftOut(BaseModel):
-    narrative: str
-    clusters: list[ClusterDraftOut]
-    suggestions: list[str]
+    narrative: str = Field(
+        description="Grounded Bahasa Indonesia narrative. Counts only through exact placeholders for the corresponding idea; no numerical words or digits elsewhere."
+    )
+    clusters: list[ClusterDraftOut] = Field(
+        description="Only currently-held misconception groups, not concept summaries. Empty array when no allowed idea remains."
+    )
+    suggestions: list[str] = Field(
+        description="Distinct practical teaching actions in Bahasa Indonesia without quantities, number words (including dua), or digits. Empty array is allowed."
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -60,6 +72,7 @@ class ClassInsightUseCase:
             raise InvalidInputError(
                 "the class counts are inconsistent", details={"problems": invalid}
             )
+        aliases, held = counts.misconception_aliases(), counts.held_counts()
         variables = {
             "title": fence_untrusted("mission", counts.mission_title),
             "total": str(counts.total),
@@ -67,6 +80,10 @@ class ClassInsightUseCase:
             "counts": counts_block(counts),
             "forbidden_numbers": ", ".join(self._config.numbers.number_words),
             "forbidden_counts": ", ".join(self._config.numbers.count_claims),
+            "active_ideas": ", ".join(
+                alias for alias in aliases.aliases() if held[aliases.resolve(alias)] > 0
+            )
+            or "(none)",
         }
         feedback, draft, problems = "(none)", "(none)", ["no attempt"]
         for attempt in range(TRIES):

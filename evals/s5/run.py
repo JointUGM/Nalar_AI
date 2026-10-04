@@ -12,6 +12,7 @@ import asyncio
 import json
 import sys
 import time
+from dataclasses import replace
 from typing import Any
 from uuid import UUID
 
@@ -57,6 +58,40 @@ SAMPLE_CLASS = ClassCounts(
     ),
 )
 
+MASTERED_CLASS = replace(
+    SAMPLE_CLASS,
+    total=1,
+    incomplete=0,
+    concepts=tuple(
+        replace(
+            c,
+            mastered=1,
+            developing=0,
+            not_observed=0,
+            misconceptions=tuple(replace(m, count=0, resolved_count=1) for m in c.misconceptions),
+        )
+        for c in SAMPLE_CLASS.concepts
+    ),
+)
+SPARSE_CLASS = replace(
+    SAMPLE_CLASS,
+    total=1,
+    incomplete=0,
+    concepts=tuple(
+        replace(
+            c,
+            mastered=1 if i == 0 else 0,
+            developing=0,
+            not_observed=0,
+            misconceptions=tuple(
+                replace(m, count=0 if i == 0 else 1, resolved_count=0) for m in c.misconceptions
+            ),
+        )
+        for i, c in enumerate(SAMPLE_CLASS.concepts)
+    ),
+)
+SAMPLE_CLASSES = (SAMPLE_CLASS, MASTERED_CLASS, SPARSE_CLASS)
+
 
 def _student(gesek: O, lembam: O, *, resolved: bool = False) -> ParentSummaryInput:
     held = gesek is O.MISCONCEPTION or resolved
@@ -95,7 +130,7 @@ async def run_gate(container: Container, *, runs: int) -> dict[str, Any]:
         ledger = UsageLedger(f"s5-insight-{run}", cap)
         start = time.perf_counter()
         try:
-            await insight.execute(SAMPLE_CLASS, ledger)
+            await insight.execute(SAMPLE_CLASSES[run % len(SAMPLE_CLASSES)], ledger)
             valid += 1
         except OutputValidationError:
             pass
@@ -112,6 +147,7 @@ async def run_gate(container: Container, *, runs: int) -> dict[str, Any]:
     summary_rate = model / (runs * len(SAMPLE_STUDENTS))
     return {
         "runs": runs,
+        "class_cases": min(runs, len(SAMPLE_CLASSES)),
         "insight_valid_rate": insight_rate,
         "summary_model_rate": summary_rate,
         "insight_p95_s": round(percentile(insight_s, 95), 2),
