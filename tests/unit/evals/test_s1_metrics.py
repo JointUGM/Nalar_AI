@@ -69,5 +69,37 @@ def test_unfound_restricted_labels_count_as_misses() -> None:
     labels = [KindLabel(9, "Kunci Jawaban nomor 1", ChunkKind.ANSWER_KEY)]
     chunks = [(4, 4, "Gaya gesek melawan gerak benda.", ChunkKind.EXPLANATION)]
     report = kind_report(labels, chunks)
+    assert report.accuracy == 0.0
     assert report.restricted_recall == 0.0
     assert len(report.unmatched) == 1
+
+
+def test_empty_recall_evidence_is_not_perfect() -> None:
+    assert match_recall([], [], [], [], threshold=0.85).recall == 0.0
+    assert recall_at_k([], [], k=3) == 0.0
+
+
+def test_no_kind_labels_supply_no_accuracy_or_restricted_evidence() -> None:
+    report = kind_report([], [])
+    assert report.accuracy == 0.0
+    assert report.restricted_recall == 0.0
+
+
+def test_kind_accuracy_includes_unmatched_labels() -> None:
+    labels = [
+        KindLabel(4, "Gaya gesek melawan", ChunkKind.EXPLANATION),
+        KindLabel(9, "Kunci Jawaban nomor 1", ChunkKind.ANSWER_KEY),
+    ]
+    chunks = [(4, 4, "Gaya gesek melawan gerak benda.", ChunkKind.EXPLANATION)]
+    report = kind_report(labels, chunks)
+    assert report.accuracy == 0.5
+    assert report.restricted_recall == 0.0
+    assert report.unmatched == (labels[1],)
+
+
+def test_nonrestricted_labels_cannot_establish_restricted_recall() -> None:
+    labels = [KindLabel(4, "Gaya gesek melawan", ChunkKind.EXPLANATION)]
+    chunks = [(4, 4, "Gaya gesek melawan gerak benda.", ChunkKind.EXPLANATION)]
+    report = kind_report(labels, chunks)
+    assert report.accuracy == 1.0
+    assert report.restricted_recall == 0.0

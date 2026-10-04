@@ -15,6 +15,7 @@ from nalar_ai.platform.llm.openai_chat_adapter import (
 )
 from nalar_ai.platform.llm.ports import (
     LLMRequest,
+    LLMUsage,
     PermanentLLMError,
     TransientLLMError,
     UserBlock,
@@ -124,8 +125,20 @@ def test_length_maps_to_max_tokens_for_the_gateway() -> None:
 
 @pytest.mark.parametrize("reason", ["content_filter", "refusal"])
 def test_refusal_is_a_permanent_error(reason: str) -> None:
-    with pytest.raises(PermanentLLMError, match="refused"):
+    with pytest.raises(PermanentLLMError, match="refused") as info:
         parse_chat_completion(_completion(finish_reason=reason))
+    assert info.value.usage == LLMUsage(input_tokens=14, output_tokens=7, cache_read_tokens=4924)
+
+
+def test_explicit_refusal_rejects_otherwise_valid_tool_arguments() -> None:
+    payload = _completion(finish_reason="tool_calls", content=None)
+    payload["choices"][0]["message"].update(
+        refusal="I cannot comply.",
+        tool_calls=[{"function": {"name": "output", "arguments": '{"a": 1}'}}],
+    )
+    with pytest.raises(PermanentLLMError, match="refused") as info:
+        parse_chat_completion(payload)
+    assert info.value.usage.output_tokens == 7
 
 
 def test_malformed_response_is_a_permanent_error() -> None:

@@ -1,13 +1,23 @@
 import logging
 import uuid
+from types import SimpleNamespace
 
+import httpx
 import pytest
 from pydantic import BaseModel
 
+from nalar_ai.platform.llm.anthropic_adapter import AnthropicMessagesAdapter
 from nalar_ai.platform.llm.fakes import ScriptedLLM
 from nalar_ai.platform.llm.gateway import LLMGateway
-from nalar_ai.platform.llm.ports import LLMResponse, LLMUsage, PermanentLLMError, TransientLLMError
-from nalar_ai.platform.llm.pricing import UnknownModelPriceError
+from nalar_ai.platform.llm.openai_chat_adapter import OpenAIChatAdapter
+from nalar_ai.platform.llm.ports import (
+    LLMPort,
+    LLMResponse,
+    LLMUsage,
+    PermanentLLMError,
+    TransientLLMError,
+)
+from nalar_ai.platform.llm.pricing import UnknownModelPriceError, llm_cost_usd
 from nalar_ai.platform.prompts.registry import PromptRegistry, parse_prompt
 from nalar_ai.shared.enums import CallStatus, ModelTier, RetrievalPath, RetrievalSource
 from nalar_ai.shared.errors import (
@@ -45,7 +55,7 @@ class Echo(BaseModel):
     word: str
 
 
-def _gateway(llm: ScriptedLLM, *, native: bool = True) -> tuple[LLMGateway, list[float]]:
+def _gateway(llm: LLMPort, *, native: bool = True) -> tuple[LLMGateway, list[float]]:
     sleeps: list[float] = []
 
     async def fake_sleep(seconds: float) -> None:
@@ -175,6 +185,84 @@ async def test_permanent_errors_are_not_retried() -> None:
     with pytest.raises(ModelCallRejectedError):
         await _generate(gateway, ledger)
     assert len(ledger.records) == 1
+
+
+@pytest.mark.parametrize("api", ["chat", "messages"])
+async def test_billed_refusal_is_rejected_and_usage_is_recorded(api: str) -> None:
+    usage = LLMUsage(input_tokens=10, output_tokens=5, cache_read_tokens=3, cache_write_tokens=2)
+    calls: list[object] = []
+    if api == "chat":
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            calls.append(request)
+            return httpx.Response(
+                200,
+                json={
+                    "choices": [
+                        {
+                            "finish_reason": "refusal",
+                            "message": {
+                                "tool_calls": [
+                                    {
+                                        "function": {
+                                            "name": "output",
+                                            "arguments": '{"word": "halo"}',
+                                        }
+                                    }
+                                ],
+                            },
+                        }
+                    ],
+                    "usage": {
+                        "prompt_tokens": 15,
+                        "completion_tokens": 5,
+                        "cache_read_input_tokens": 3,
+                        "cache_creation_input_tokens": 2,
+                    },
+                },
+            )
+
+        client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        adapter: LLMPort = OpenAIChatAdapter(
+            client, base_url="https://sumopod.test/v1", api_key="k"
+        )
+    else:
+
+        async def create(**kwargs: object) -> SimpleNamespace:
+            calls.append(kwargs)
+            return SimpleNamespace(
+                content=[SimpleNamespace(type="text", text='{"word": "halo"}')],
+                stop_reason="refusal",
+                usage=SimpleNamespace(
+                    input_tokens=10,
+                    output_tokens=5,
+                    cache_read_input_tokens=3,
+                    cache_creation_input_tokens=2,
+                ),
+            )
+
+        adapter = AnthropicMessagesAdapter(SimpleNamespace(messages=SimpleNamespace(create=create)))
+
+    gateway, sleeps = _gateway(adapter)
+    ledger = UsageLedger("refusal", 1.0)
+    try:
+        with pytest.raises(ModelCallRejectedError, match="refused"):
+            await _generate(gateway, ledger)
+    finally:
+        if api == "chat":
+            await client.aclose()
+    assert len(calls) == 1
+    assert sleeps == []
+    (record,) = ledger.records
+    assert record.status is CallStatus.ERROR
+    assert record.error_message == "the model refused the request"
+    assert (
+        record.input_tokens,
+        record.output_tokens,
+        record.cache_read_tokens,
+        record.cache_write_tokens,
+    ) == (10, 5, 3, 2)
+    assert record.cost_usd == round(llm_cost_usd("claude-sonnet-5", usage), 6)
 
 
 async def test_budget_is_checked_before_calling() -> None:

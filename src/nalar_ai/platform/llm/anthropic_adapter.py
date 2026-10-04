@@ -55,20 +55,21 @@ def build_message_params(request: LLMRequest) -> dict[str, Any]:
 
 
 def parse_message(message: Any) -> LLMResponse:
+    usage = message.usage
+    parsed_usage = LLMUsage(
+        input_tokens=int(usage.input_tokens or 0),
+        output_tokens=int(usage.output_tokens or 0),
+        cache_read_tokens=int(getattr(usage, "cache_read_input_tokens", None) or 0),
+        cache_write_tokens=int(getattr(usage, "cache_creation_input_tokens", None) or 0),
+    )
     if message.stop_reason == "refusal":
-        raise PermanentLLMError("the model refused the request")
+        raise PermanentLLMError("the model refused the request", usage=parsed_usage)
     text = "".join(
         block.text for block in message.content if getattr(block, "type", None) == "text"
     )
-    usage = message.usage
     return LLMResponse(
         text=text,
-        usage=LLMUsage(
-            input_tokens=int(usage.input_tokens or 0),
-            output_tokens=int(usage.output_tokens or 0),
-            cache_read_tokens=int(getattr(usage, "cache_read_input_tokens", None) or 0),
-            cache_write_tokens=int(getattr(usage, "cache_creation_input_tokens", None) or 0),
-        ),
+        usage=parsed_usage,
         stop_reason=message.stop_reason,
     )
 

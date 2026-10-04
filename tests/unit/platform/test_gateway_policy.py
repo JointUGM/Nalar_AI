@@ -47,8 +47,12 @@ class GatedLLM:
 
     def __init__(self) -> None:
         self.release = asyncio.Event()
+        self.started = asyncio.Event()
+        self.calls = 0
 
     async def complete(self, request: LLMRequest) -> LLMResponse:
+        self.calls += 1
+        self.started.set()
         if request.blocks[-1].text == "Say wait.":
             await self.release.wait()
         return LLMResponse(text='{"word": "halo"}', usage=LLMUsage(input_tokens=10))
@@ -83,6 +87,59 @@ async def test_a_slow_call_hits_its_deadline_and_is_recorded() -> None:
     (record,) = ledger.records
     assert record.status is CallStatus.ERROR
     assert record.error_message == "deadline exceeded after 0.05s"
+
+
+@pytest.mark.parametrize(
+    ("default_timeout_s", "policy_timeout_s", "expected_timeout_s"),
+    [(0.01, None, 0.01), (1.0, 0.01, 0.01), (0.001, 0.01, 0.01)],
+)
+async def test_gateway_deadlines_bound_each_attempt_and_explicit_policy_takes_precedence(
+    default_timeout_s: float, policy_timeout_s: float | None, expected_timeout_s: float
+) -> None:
+    port = GatedLLM()
+    sleeps: list[float] = []
+
+    async def fake_sleep(seconds: float) -> None:
+        sleeps.append(seconds)
+
+    gateway = LLMGateway(
+        port=port,
+        prompts=PromptRegistry([parse_prompt(PROMPT)]),
+        models=MODELS,
+        default_timeout_s=default_timeout_s,
+        sleep=fake_sleep,
+    )
+    ledger = UsageLedger("deadline", 1.0)
+    policy = CallPolicy(timeout_s=policy_timeout_s, max_attempts=2, max_repairs=0)
+    task = asyncio.create_task(_generate(gateway, ledger, "wait", policy))
+    await asyncio.wait_for(port.started.wait(), timeout=1.0)
+    with pytest.raises(UpstreamUnavailableError, match="deadline exceeded"):
+        await asyncio.wait_for(task, timeout=1.0)
+    assert port.calls == 2
+    assert len(ledger.records) == 2
+    assert all(record.status is CallStatus.ERROR for record in ledger.records)
+    assert all(
+        record.error_message == f"deadline exceeded after {expected_timeout_s}s"
+        for record in ledger.records
+    )
+    assert sleeps == [0.5]
+
+
+async def test_caller_cancellation_records_attempt_and_propagates_without_retry() -> None:
+    port = GatedLLM()
+    gateway = _gateway(port, concurrency=1)
+    ledger = UsageLedger("cancelled", 1.0)
+    task = asyncio.create_task(_generate(gateway, ledger, "wait", CallPolicy()))
+    await port.started.wait()
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    (record,) = ledger.records
+    assert record.status is CallStatus.ERROR
+    assert record.error_message == "model call cancelled"
+    assert port.calls == 1
+    # Cancellation releases the lane so the next request can still make progress.
+    assert await _generate(gateway, UsageLedger("next", 1.0), "go", LIVE) == Echo(word="halo")
 
 
 async def test_live_policy_makes_no_repair_call() -> None:

@@ -43,3 +43,7 @@ class TransientLLMError(Exception):
 
 class PermanentLLMError(Exception):
     """Not retryable: bad request, auth, refusal."""
+
+    def __init__(self, message: str, *, usage: LLMUsage | None = None) -> None:
+        super().__init__(message)
+        self.usage = usage if usage is not None else LLMUsage()

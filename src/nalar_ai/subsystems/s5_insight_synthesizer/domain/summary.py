@@ -1,11 +1,11 @@
 """The parent summary, its guard and its template (design doc §7). Pure text, no model."""
 
 import re
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 
 from nalar_ai.shared.enums import ConceptOutcome
-from nalar_ai.shared.text import contains_phrase, contains_stem, normalize_key
+from nalar_ai.shared.text import contains_phrase, normalize_key, stem_spans
 from nalar_ai.subsystems.s5_insight_synthesizer.domain.numbers import keys, without_names
 
 _DIGIT = re.compile(r"\d")
@@ -42,6 +42,7 @@ class SummaryRules:
     max_words: int
     banned_terms: tuple[str, ...]  # scores and integrity; affixed forms match too
     comparison_phrases: tuple[str, ...]  # whole-phrase match
+    banned_term_exceptions: tuple[tuple[str, tuple[str, ...]], ...] = ()  # exact matching spans
 
     @classmethod
     def build(
@@ -51,8 +52,18 @@ class SummaryRules:
         max_words: int,
         banned_terms: Iterable[str],
         comparison_phrases: Iterable[str],
+        banned_term_exceptions: Mapping[str, Iterable[str]] | None = None,
     ) -> "SummaryRules":
-        return cls(min_words, max_words, keys(banned_terms), keys(comparison_phrases))
+        return cls(
+            min_words,
+            max_words,
+            keys(banned_terms),
+            keys(comparison_phrases),
+            tuple(
+                (normalize_key(term), keys(exceptions))
+                for term, exceptions in (banned_term_exceptions or {}).items()
+            ),
+        )
 
 
 def content_problems(text: str, rules: SummaryRules, names: Iterable[str] = ()) -> list[str]:
@@ -62,10 +73,11 @@ def content_problems(text: str, rules: SummaryRules, names: Iterable[str] = ()) 
     if _DIGIT.search(text):
         problems.append("write no digits or numbers")
     key = normalize_key(text)
+    exceptions = dict(rules.banned_term_exceptions)
     problems += [
         f"do not mention scores, cheating or copying (found '{term}')"
         for term in rules.banned_terms
-        if contains_stem(key, term)
+        if any(span not in exceptions.get(term, ()) for span in stem_spans(key, term))
     ]
     problems += [
         f"do not compare Ananda with other students (found '{phrase}')"

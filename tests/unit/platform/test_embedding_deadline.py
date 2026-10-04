@@ -14,7 +14,11 @@ MODEL = "text-embedding-3-small"
 
 
 class StuckEmbedder:
+    def __init__(self) -> None:
+        self.started = asyncio.Event()
+
     async def embed(self, texts: Sequence[str], *, model: str, dimensions: int) -> EmbeddingBatch:
+        self.started.set()
         await asyncio.Event().wait()  # never returns
         raise AssertionError("unreachable")
 
@@ -46,3 +50,29 @@ async def test_max_attempts_overrides_the_service_default() -> None:
     with pytest.raises(UpstreamUnavailableError):
         await service.embed(["gaya"], tag="query", ledger=UsageLedger("r", 1.0), max_attempts=1)
     assert flaky.calls == 1
+
+
+async def test_default_deadline_bounds_calls_without_an_override() -> None:
+    service = EmbeddingService(
+        StuckEmbedder(), model=MODEL, dimensions=8, default_timeout_s=0.01, max_attempts=1
+    )
+    ledger = UsageLedger("r", 1.0)
+    with pytest.raises(UpstreamUnavailableError):
+        await service.embed(["gaya"], tag="query", ledger=ledger)
+    (record,) = ledger.records
+    assert record.status is CallStatus.ERROR
+    assert record.error_message == "deadline exceeded after 0.01s"
+
+
+async def test_caller_cancellation_preserves_the_embedding_attempt() -> None:
+    port = StuckEmbedder()
+    service = EmbeddingService(port, model=MODEL, dimensions=8)
+    ledger = UsageLedger("r", 1.0)
+    task = asyncio.create_task(service.embed(["gaya"], tag="query", ledger=ledger))
+    await port.started.wait()
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    (record,) = ledger.records
+    assert record.status is CallStatus.ERROR
+    assert record.error_message == "embedding call cancelled"

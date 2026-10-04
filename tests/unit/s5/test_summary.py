@@ -1,9 +1,14 @@
+import pytest
+
 from nalar_ai.shared.enums import ConceptOutcome as O
 from nalar_ai.subsystems.s5_insight_synthesizer.domain.summary import (
     ParentConcept,
     SummaryRules,
     SummaryTemplate,
     check_summary,
+)
+from nalar_ai.subsystems.s5_insight_synthesizer.infrastructure.config_loader import (
+    load_synthesizer_config,
 )
 from tests.support.s5 import SUMMARY, make_parent_input
 
@@ -23,6 +28,48 @@ TEMPLATE = SummaryTemplate(
 
 def test_a_clean_summary_passes() -> None:
     assert check_summary(SUMMARY, RULES) == []
+
+
+@pytest.mark.parametrize("word", ["saling", "SALING!"])
+def test_shipped_guard_accepts_the_word_saling(word: str) -> None:
+    text = SUMMARY + f" Gaya dan gerak {word} berkaitan dalam kegiatan sehari-hari."
+    assert check_summary(text, load_synthesizer_config().summary) == []
+
+
+@pytest.mark.parametrize(
+    "word", ["salin", "menyalin", "disalin", "menyalinnya", "saling menyalin", "salingnya"]
+)
+def test_shipped_guard_still_rejects_copying_and_unapproved_affixes(word: str) -> None:
+    problems = check_summary(
+        SUMMARY + f" Ananda {word} jawaban.", load_synthesizer_config().summary
+    )
+    assert any(
+        problem.startswith("do not mention scores, cheating or copying") for problem in problems
+    )
+
+
+def test_exceptions_are_normalized_exact_and_scoped_to_their_banned_term() -> None:
+    rules = SummaryRules.build(
+        min_words=1,
+        max_words=20,
+        banned_terms=["salin", "saling"],
+        comparison_phrases=[],
+        banned_term_exceptions={"SALIN!": ["SALING!", "saling", ""]},
+    )
+    assert rules.banned_term_exceptions == (("salin", ("saling",)),)
+    # The exception for "salin" cannot override a separately banned term.
+    assert check_summary("saling", rules) == [
+        "do not mention scores, cheating or copying (found 'saling')"
+    ]
+    assert "do not mention scores, cheating or copying (found 'salin')" in check_summary(
+        "salingnya", rules
+    )
+
+
+def test_a_provided_numeric_name_does_not_exempt_a_longer_number() -> None:
+    assert check_summary(SUMMARY + " Misi Hukum Newton 11 selesai.", RULES, ["Hukum Newton 1"]) == [
+        "write no digits or numbers"
+    ]
 
 
 def test_length_digits_scores_and_comparisons_are_rejected() -> None:

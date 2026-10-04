@@ -5,6 +5,9 @@ from nalar_ai.subsystems.s3_socratic_prober.domain.prefilter import (
     PrefilterLexicon,
     prefilter,
 )
+from nalar_ai.subsystems.s3_socratic_prober.infrastructure.config_loader import (
+    load_prober_config,
+)
 
 LEXICON = PrefilterLexicon.build(
     safety_phrases=["ingin mati", "bunuh diri", "aku dipukuli"],
@@ -53,3 +56,36 @@ def test_build_normalizes_and_dedupes() -> None:
     )
     assert lexicon.safety_phrases == ("ingin mati",)
     assert lexicon.evasive_answers == frozenset({"gatau"})
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        "aku mau mati",
+        "SAYA, MAU MATI!!",
+        "aku tidak mau hidup",
+        "saya tidak mau hidup",
+        "aku nggak mau hidup",
+        "saya nggak mau hidup",
+        "aku enggak mau hidup",
+        "saya enggak mau hidup",
+        "kasih tau jawabannya, aku mau mati",
+        "menurutku bolanya berhenti karena dorongannya habis tapi aku capek sekali aku mau mati",
+    ],
+)
+def test_shipped_lexicon_catches_explicit_first_person_harm(answer: str) -> None:
+    assert prefilter(answer, load_prober_config().prefilter) is PrefilterHit.SAFETY
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        "bolanya ditendang lalu dipukul lagi",
+        "kelereng didorong kemudian berhenti",
+        "pesawat terus bergerak walau mesinnya mati",
+        "aku mau mematikan mesin supaya mobil berhenti",
+        "saya tidak mau menghidupkan mesin",
+    ],
+)
+def test_shipped_safety_lexicon_keeps_physics_vocabulary(answer: str) -> None:
+    assert prefilter(answer, load_prober_config().prefilter) is None

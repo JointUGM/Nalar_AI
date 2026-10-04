@@ -1,4 +1,5 @@
-from fastapi import Depends
+import pytest
+from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
 
 from nalar_ai import __version__
@@ -35,3 +36,19 @@ def test_service_key_is_required_on_protected_routes(container: Container) -> No
         assert test_client.get("/_protected").status_code == 401
         assert test_client.get("/_protected", headers={"X-Service-Key": "wrong"}).status_code == 401
         assert test_client.get("/_protected", headers=AUTH).status_code == 200
+
+
+@pytest.mark.parametrize("key", [None, "invalid"])
+def test_every_service_route_rejects_unauthenticated_requests(
+    client: TestClient, key: str | None
+) -> None:
+    assert isinstance(client.app, FastAPI)
+    paths = client.app.openapi()["paths"]
+    protected = [path for path in paths if path.startswith("/v1/")]
+    assert len(protected) == 14
+    for path in protected:
+        headers = {} if key is None else {"X-Service-Key": key}
+        response = client.post(path, headers=headers, json={})
+        assert response.status_code == 401, path
+        assert response.json()["error"]["code"] == "unauthorized", path
+        assert response.json()["invocations"] == [], path

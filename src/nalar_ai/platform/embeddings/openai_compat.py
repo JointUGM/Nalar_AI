@@ -52,7 +52,18 @@ class OpenAICompatEmbedder:
             raise PermanentEmbeddingError(f"{status}: {response.text[:200]}")
         try:
             payload = response.json()
-            rows = sorted(payload["data"], key=lambda row: int(row["index"]))
+            returned_model = payload.get("model")
+            if returned_model is not None and returned_model != model:
+                raise PermanentEmbeddingError("embedding response model does not match request")
+            data = payload["data"]
+            indices = [row["index"] for row in data]
+            if any(type(index) is not int for index in indices) or sorted(indices) != list(
+                range(len(texts))
+            ):
+                raise PermanentEmbeddingError(
+                    "embedding indices must match every input exactly once"
+                )
+            rows = sorted(data, key=lambda row: row["index"])
             return EmbeddingBatch(
                 vectors=[[float(value) for value in row["embedding"]] for row in rows],
                 total_tokens=int(payload.get("usage", {}).get("total_tokens", 0)),

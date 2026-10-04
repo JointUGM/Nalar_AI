@@ -12,14 +12,14 @@ from nalar_ai.subsystems.s3_socratic_prober.application.next_turn import (
     QuestionSource,
     TurnAction,
 )
+from nalar_ai.subsystems.s3_socratic_prober.domain.classification import ClassificationSource
 from nalar_ai.subsystems.s3_socratic_prober.domain.guard import GuardLexicon, check_text
 from nalar_ai.subsystems.s3_socratic_prober.domain.moves import AnswerType
 from nalar_ai.subsystems.s3_socratic_prober.domain.pack import ContextPack
 
 GATES = {"coverage": 1.0, "valid_choices": 0.98, "classification_accuracy": 0.85}
 
-# Turns where the chooser never answered, so there was no choice to validate.
-_NOT_CONSULTED = frozenset({MoveSource.PREFILTER, MoveSource.FALLBACK_ERROR})
+_INVALID_SOURCES = frozenset({MoveSource.FALLBACK_INVALID, MoveSource.FALLBACK_ERROR})
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,10 +39,10 @@ def percentile(values: Sequence[float], q: float) -> float:
     return ordered[rank - 1]
 
 
-def accuracy(pairs: Sequence[tuple[AnswerType, AnswerType]]) -> float:
-    """(expected, predicted) pairs; 1.0 for no pairs."""
+def accuracy(pairs: Sequence[tuple[AnswerType, AnswerType | None]]) -> float:
+    """(expected, predicted) pairs; unavailable predictions and no evidence score zero."""
     if not pairs:
-        return 1.0
+        return 0.0
     return sum(expected is predicted for expected, predicted in pairs) / len(pairs)
 
 
@@ -77,12 +77,29 @@ def session_report(
     judge_findings: Sequence[LeakFinding] = (),
 ) -> dict[str, Any]:
     probes = [turn.result.probe for trace in traces for turn in trace.turns if turn.result.probe]
-    consulted = [p for p in probes if p.move_source not in _NOT_CONSULTED]
-    invalid = [p for p in consulted if p.move_source is MoveSource.FALLBACK_INVALID]
-    valid_rate = 1 - len(invalid) / len(consulted) if consulted else 1.0
+    # Prefilter choices need no model evidence. Failed attempts must stay in the denominator.
+    consulted = [
+        turn.result
+        for trace in traces
+        for turn in trace.turns
+        if turn.result.probe and turn.result.probe.move_source is not MoveSource.PREFILTER
+    ]
+    invalid = [
+        result
+        for result in consulted
+        if result.probe
+        and (
+            result.probe.move_source in _INVALID_SOURCES
+            or (
+                result.probe.move_source is MoveSource.DEFAULT
+                and result.classification.source is ClassificationSource.FALLBACK
+            )
+        )
+    ]
+    valid_rate = 1 - len(invalid) / len(consulted) if consulted else float(bool(probes))
     finished = [t for t in traces if t.final.action is TurnAction.END]
     covered = [t for t in finished if all(challenged for _, challenged in t.final.coverage)]
-    coverage_rate = len(covered) / len(finished) if finished else 1.0
+    coverage_rate = len(covered) / len(finished) if finished else 0.0
     deterministic = [f for t in traces for f in deterministic_leaks(t, pack, lexicon)]
     latencies = [turn.latency_s for trace in traces for turn in trace.turns]
     costs = [sum(turn.cost_usd for turn in trace.turns) for trace in traces]
@@ -99,8 +116,8 @@ def session_report(
         "valid_choices": round(valid_rate, 4),
         "leaks_deterministic": [_finding(f) for f in deterministic],
         "leaks_judge": [_finding(f) for f in judge_findings],
-        "turn_latency_p50_s": round(percentile(latencies, 50), 3),
-        "turn_latency_p95_s": round(percentile(latencies, 95), 3),
+        "turn_latency_p50_s": round(percentile(latencies, 50), 3) if latencies else None,
+        "turn_latency_p95_s": round(percentile(latencies, 95), 3) if latencies else None,
         "cost_per_session_usd": round(sum(costs) / len(costs), 6) if costs else 0.0,
         "move_sources": dict(Counter(p.move_source.value for p in probes)),
         "guard_results": dict(Counter(p.guard_result.value for p in probes)),

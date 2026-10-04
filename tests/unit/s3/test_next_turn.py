@@ -7,6 +7,7 @@ from nalar_ai.platform.llm.fakes import ScriptedLLM
 from nalar_ai.platform.llm.ports import LLMRequest, LLMResponse, TransientLLMError
 from nalar_ai.shared.enums import (
     AiPurpose,
+    CallStatus,
     GuardResult,
     MoveReasonCode,
     MoveSource,
@@ -155,6 +156,36 @@ async def test_distress_pauses_the_session_before_any_model_call() -> None:
     assert result.probe is None and llm.requests == []
 
 
+@pytest.mark.parametrize("mode", [PlannerMode.HYBRID, PlannerMode.TABLE])
+@pytest.mark.parametrize("limit", ["none", "duration", "probes"])
+async def test_explicit_harm_pauses_when_the_provider_is_down_even_at_session_limits(
+    mode: PlannerMode, limit: str
+) -> None:
+    llm = by_prompt(classify=[TransientLLMError("provider unavailable")])
+    history = (
+        (
+            anchor("karena lantainya"),
+            *(probe(i, T_GESEK, M.DECOMPOSE, "karena lantainya") for i in range(1, 5)),
+            probe(5, T_GESEK, M.DECOMPOSE, "aku mau mati"),
+        )
+        if limit == "probes"
+        else (anchor("aku mau mati"),)
+    )
+    result, ledger = await _run(
+        llm,
+        history,
+        mode=mode,
+        elapsed_seconds=make_pack().max_duration_minutes * 60 if limit == "duration" else 60,
+    )
+    assert result.action is TurnAction.SAFETY_PAUSE
+    assert result.classification.answer_type is AnswerType.SAFETY
+    assert result.classification.source is ClassificationSource.PREFILTER
+    assert result.safety_message == CONFIG.texts.safety_message
+    assert result.probe is None and result.end_reason is None
+    assert result.warnings == ()
+    assert llm.requests == [] and ledger.records == ()
+
+
 async def test_the_classifier_can_raise_a_safety_concern() -> None:
     llm = by_prompt(classify=[classify_reply(safety_concern=True)])
     result, ledger = await _run(llm)
@@ -231,6 +262,80 @@ class _SlowLLM:
     async def complete(self, request: LLMRequest) -> LLMResponse:
         await asyncio.sleep(self._delay_s)
         return await self._inner.complete(request)
+
+
+class _HangingLLM:
+    """Never responds; the gateway must cancel each attempted call at its deadline."""
+
+    def __init__(self) -> None:
+        self.requests: list[LLMRequest] = []
+        self.cancelled = 0
+
+    async def complete(self, request: LLMRequest) -> LLMResponse:
+        self.requests.append(request)
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            self.cancelled += 1
+            raise
+        raise AssertionError("the provider should never respond")
+
+
+@pytest.mark.parametrize("mode", [PlannerMode.HYBRID, PlannerMode.TABLE])
+async def test_a_hanging_provider_returns_an_approved_probe_with_timeout_provenance(
+    mode: PlannerMode,
+) -> None:
+    llm = _HangingLLM()
+    ledger = UsageLedger("req-hanging", 1.0)
+    policy = replace(
+        POLICY,
+        turn_budget_s=0.25,
+        classify_timeout_s=0.1,
+        choose_timeout_s=0.1,
+        min_step_s=0.01,
+    )
+    use_case = NextTurnUseCase(
+        llm=make_gateway(llm), embeddings=make_embeddings(), config=CONFIG, policy=policy
+    )
+    async with asyncio.timeout(2.0):
+        result = await use_case.execute(NextTurnCommand(make_pack(), FIRST, mode, 60), ledger)
+    assert result.action is TurnAction.PROBE
+    assert result.classification.source is ClassificationSource.FALLBACK
+    assert result.probe is not None
+    assert result.probe.question_source is QuestionSource.APPROVED
+    assert result.probe.question_text == question(T_GESEK, M.REQUEST_JUSTIFICATION).text
+    assert result.probe.guard_result is GuardResult.NOT_RUN
+    purposes = [AiPurpose.TURN_ANALYZE]
+    if mode is PlannerMode.HYBRID:
+        purposes.append(AiPurpose.PROBE_PLAN)
+        assert result.warnings == ("classification_fallback", "choice_fallback")
+    else:
+        assert result.warnings == ("classification_fallback",)
+    assert [record.purpose for record in ledger.records] == purposes
+    assert len(llm.requests) == llm.cancelled == len(ledger.records)
+    assert all(record.status is CallStatus.ERROR for record in ledger.records)
+    assert all(record.request_id == ledger.request_id for record in ledger.records)
+    assert all("deadline exceeded" in (record.error_message or "") for record in ledger.records)
+
+
+async def test_explicit_harm_pauses_with_a_hanging_provider_and_a_spent_turn_budget() -> None:
+    llm = _HangingLLM()
+    ledger = UsageLedger("req-harm", 1.0)
+    use_case = NextTurnUseCase(
+        llm=make_gateway(llm),
+        embeddings=make_embeddings(),
+        config=CONFIG,
+        policy=replace(POLICY, turn_budget_s=0.1),
+    )
+    async with asyncio.timeout(2.0):
+        result = await use_case.execute(
+            NextTurnCommand(make_pack(), (anchor("aku mau mati"),), PlannerMode.HYBRID, 60),
+            ledger,
+        )
+    assert result.action is TurnAction.SAFETY_PAUSE
+    assert result.safety_message == CONFIG.texts.safety_message
+    assert result.probe is None and result.end_reason is None
+    assert llm.requests == [] and ledger.records == ()
 
 
 @pytest.mark.parametrize(

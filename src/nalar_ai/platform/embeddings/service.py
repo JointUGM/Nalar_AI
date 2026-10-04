@@ -36,6 +36,7 @@ class EmbeddingService:
         max_attempts: int = 3,
         base_delay_s: float = 0.5,
         provider: str = "sumopod",
+        default_timeout_s: float = 120.0,
         clock: Callable[[], float] = time.perf_counter,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
     ) -> None:
@@ -47,6 +48,7 @@ class EmbeddingService:
         self._max_attempts = max_attempts
         self._base_delay_s = base_delay_s
         self._provider = provider
+        self._default_timeout_s = default_timeout_s
         self._clock = clock
         self._sleep = sleep
 
@@ -67,7 +69,7 @@ class EmbeddingService:
         timeout_s: float | None = None,
         max_attempts: int | None = None,
     ) -> list[Vector]:
-        """Embed texts in batches. timeout_s bounds each attempt; max_attempts overrides the default."""
+        """Embed texts in batches. Each attempt uses the configured deadline unless overridden."""
         if any(not text.strip() for text in texts):
             raise InvalidInputError("cannot embed empty text")
         vectors: list[Vector] = []
@@ -75,7 +77,11 @@ class EmbeddingService:
             batch = list(texts[start : start + self._batch_size])
             vectors.extend(
                 await self._embed_batch(
-                    batch, tag, ledger, timeout_s, max_attempts or self._max_attempts
+                    batch,
+                    tag,
+                    ledger,
+                    self._default_timeout_s if timeout_s is None else timeout_s,
+                    max_attempts or self._max_attempts,
                 )
             )
         return vectors
@@ -102,6 +108,9 @@ class EmbeddingService:
                 raise TransientEmbeddingError(detail) from exc
             except (TransientEmbeddingError, PermanentEmbeddingError) as exc:
                 ledger.add(self._record(tag, 0, started, ledger, str(exc)))
+                raise
+            except asyncio.CancelledError:
+                ledger.add(self._record(tag, 0, started, ledger, "embedding call cancelled"))
                 raise
             except Exception as exc:  # an odd payload must not drop the attempt's record
                 detail = f"unexpected embedding error: {exc!r}"

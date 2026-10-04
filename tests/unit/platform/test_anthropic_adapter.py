@@ -10,7 +10,7 @@ from nalar_ai.platform.llm.anthropic_adapter import (
     is_retryable_status,
     parse_message,
 )
-from nalar_ai.platform.llm.ports import LLMRequest, PermanentLLMError, UserBlock
+from nalar_ai.platform.llm.ports import LLMRequest, LLMUsage, PermanentLLMError, UserBlock
 from nalar_ai.settings import Settings
 from nalar_ai.shared.errors import ConfigurationError
 
@@ -83,8 +83,9 @@ def test_parse_message_joins_text_blocks_and_reads_cache_usage() -> None:
 
 
 def test_refusal_is_a_permanent_error() -> None:
-    with pytest.raises(PermanentLLMError, match="refused"):
+    with pytest.raises(PermanentLLMError, match="refused") as info:
         parse_message(_message(stop_reason="refusal"))
+    assert info.value.usage == LLMUsage(input_tokens=10, output_tokens=5, cache_read_tokens=3)
 
 
 @pytest.mark.parametrize(

@@ -49,7 +49,7 @@ logger = logging.getLogger("nalar_ai.llm")
 class CallPolicy:
     """Per-call limits. The defaults suit batch work (S1); live turns (S3) pass a tight policy.
 
-    timeout_s: per attempt, including the wait for a concurrency slot; None = no deadline.
+    timeout_s: per attempt, including the wait for a concurrency slot; None = gateway default.
     max_attempts: None = the gateway default. max_repairs: repair calls for invalid output.
     lane: live (S3) and scoring (S4) calls never queue behind batch calls or each other.
     """
@@ -72,6 +72,7 @@ class LLMGateway:
         models: Mapping[ModelTier, str],
         native_structured_output: bool = True,
         max_attempts: int = 3,
+        default_timeout_s: float = 120.0,
         concurrency: int = 4,
         live_concurrency: int = 32,
         scoring_concurrency: int = 16,
@@ -95,6 +96,7 @@ class LLMGateway:
         self._models = dict(models)
         self._native = native_structured_output
         self._max_attempts = max_attempts
+        self._default_timeout_s = default_timeout_s
         self._semaphores: dict[Lane, asyncio.Semaphore] = {
             "batch": asyncio.Semaphore(concurrency),
             "live": asyncio.Semaphore(live_concurrency),
@@ -170,15 +172,16 @@ class LLMGateway:
         policy: CallPolicy,
     ) -> LLMResponse:
         semaphore = self._semaphores[policy.lane]
+        timeout_s = policy.timeout_s if policy.timeout_s is not None else self._default_timeout_s
 
         async def attempt() -> LLMResponse:
             ledger.ensure_budget()
             started = self._clock()
             try:
-                async with asyncio.timeout(policy.timeout_s), semaphore:
+                async with asyncio.timeout(timeout_s), semaphore:
                     response = await self._port.complete(request)
             except TimeoutError as exc:
-                detail = f"deadline exceeded after {policy.timeout_s}s"
+                detail = f"deadline exceeded after {timeout_s}s"
                 ledger.add(
                     self._record(
                         template, request.model, LLMUsage(), started, ledger, retrieval, detail
@@ -186,9 +189,23 @@ class LLMGateway:
                 )
                 raise TransientLLMError(detail) from exc
             except (TransientLLMError, PermanentLLMError) as exc:
+                usage = exc.usage if isinstance(exc, PermanentLLMError) else LLMUsage()
                 ledger.add(
                     self._record(
-                        template, request.model, LLMUsage(), started, ledger, retrieval, str(exc)
+                        template, request.model, usage, started, ledger, retrieval, str(exc)
+                    )
+                )
+                raise
+            except asyncio.CancelledError:
+                ledger.add(
+                    self._record(
+                        template,
+                        request.model,
+                        LLMUsage(),
+                        started,
+                        ledger,
+                        retrieval,
+                        "model call cancelled",
                     )
                 )
                 raise

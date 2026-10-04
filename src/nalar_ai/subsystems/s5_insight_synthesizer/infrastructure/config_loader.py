@@ -36,6 +36,7 @@ def load_synthesizer_config(path: Path = DEFAULT_CONFIG_PATH) -> SynthesizerConf
         max_words=int(summary["max_words"]),
         banned_terms=summary["banned_terms"],
         comparison_phrases=summary["comparison_phrases"],
+        banned_term_exceptions=summary.get("banned_term_exceptions", {}),
     )
     template = SummaryTemplate(**{k: str(v) for k, v in summary["template"].items()})
     problems = content_problems(template.render(_SAMPLE), rules)
