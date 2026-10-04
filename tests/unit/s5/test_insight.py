@@ -85,7 +85,8 @@ def test_a_cluster_needs_known_held_unused_ideas() -> None:
         "cluster 1: no student holds m3 now; leave it out",
         "cluster 1: unknown idea 'm9'",
         "cluster 2: m1 is already in another cluster",
-        "cluster 3: name at least one idea",
+        "cluster 3: misconceptions must contain a currently-held idea alias; "
+        "otherwise omit this entire cluster",
     ]
 
 

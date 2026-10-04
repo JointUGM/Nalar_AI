@@ -46,8 +46,8 @@ async def test_a_clean_insight_comes_back_with_ids() -> None:
     assert result.insight.narrative.startswith(f"{{{{count:{M_HABIS}}}}} dari {{{{total}}}}")
     (record,) = ledger.records
     assert record.purpose is AiPurpose.CLASS_MAP_INSIGHT
-    assert record.model == MODELS[ModelTier.FAST]
-    assert record.prompt_version == "s5.class_insight@v3"
+    assert record.model == MODELS[ModelTier.JUDGE]
+    assert record.prompt_version == "s5.class_insight@v4"
     assert len(llm.requests) == 1 and len(result.insight.suggestions) == 1
 
 
@@ -98,6 +98,21 @@ async def test_a_provider_outage_propagates() -> None:
         await _run(llm, ledger=ledger)
     assert len(ledger.records) == 2
     assert all(r.status.value == "error" for r in ledger.records)
+
+
+async def test_the_prompt_excludes_zero_held_ideas_from_cluster_candidates() -> None:
+    counts = make_counts()
+    first = counts.concepts[0]
+    counts = replace(
+        counts,
+        concepts=(
+            replace(first, misconceptions=tuple(replace(m, count=0) for m in first.misconceptions)),
+            *counts.concepts[1:],
+        ),
+    )
+    llm = ScriptedLLM([insight_reply(clusters=[], suggestions=[])])
+    await _run(llm, counts=counts)
+    assert "Allowed idea aliases for clusters: m2" in llm.requests[0].blocks[-1].text
 
 
 async def test_inconsistent_counts_fail_before_any_model_call() -> None:
