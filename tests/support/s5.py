@@ -71,7 +71,13 @@ LEXICON = NumberLexicon.build(
     count_claims=["sebagian besar", "semua siswa", "kebanyakan"],
 )
 LIMITS = InsightLimits(
-    narrative_max_words=120, explanation_max_words=50, name_max_words=8, max_clusters=6
+    narrative_max_words=120,
+    explanation_max_words=50,
+    name_max_words=8,
+    max_clusters=6,
+    max_suggestions=3,
+    suggestion_max_words=60,
+    suggestion_max_chars=600,
 )
 
 NARRATIVE = (
@@ -95,7 +101,14 @@ CLUSTERS: list[dict[str, Any]] = [
 
 
 def insight_reply(**changes: Any) -> str:
-    return json.dumps({"narrative": NARRATIVE, "clusters": CLUSTERS, **changes})
+    return json.dumps(
+        {
+            "narrative": NARRATIVE,
+            "clusters": CLUSTERS,
+            "suggestions": ["Minta siswa menjelaskan gaya gesek melalui prediksi dan pengamatan."],
+            **changes,
+        }
+    )
 
 
 def make_parent_input(**changes: Any) -> ParentSummaryInput:

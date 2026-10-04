@@ -4,6 +4,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from uuid import UUID
 
+from nalar_ai.shared.text import normalize_key
 from nalar_ai.subsystems.s5_insight_synthesizer.domain.counts import ClassCounts
 from nalar_ai.subsystems.s5_insight_synthesizer.domain.numbers import (
     NumberLexicon,
@@ -22,6 +23,23 @@ class InsightLimits:
     explanation_max_words: int
     name_max_words: int
     max_clusters: int
+    max_suggestions: int
+    suggestion_max_words: int
+    suggestion_max_chars: int
+
+    def __post_init__(self) -> None:
+        for field, value in (
+            ("narrative_max_words", self.narrative_max_words),
+            ("explanation_max_words", self.explanation_max_words),
+            ("name_max_words", self.name_max_words),
+            ("max_clusters", self.max_clusters),
+            ("max_suggestions", self.max_suggestions),
+            ("suggestion_max_words", self.suggestion_max_words),
+            ("suggestion_max_chars", self.suggestion_max_chars),
+        ):
+            minimum = 0 if field in {"max_clusters", "max_suggestions"} else 1
+            if type(value) is not int or value < minimum:
+                raise ValueError(f"{field} must be an integer >= {minimum}")
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,6 +60,7 @@ class Cluster:
 class Insight:
     narrative: str  # placeholders keyed by real ids (design doc §4.2)
     clusters: tuple[Cluster, ...]
+    suggestions: tuple[str, ...]
 
 
 def check_insight(
@@ -50,6 +69,7 @@ def check_insight(
     counts: ClassCounts,
     lexicon: NumberLexicon,
     limits: InsightLimits,
+    suggestions: Sequence[str],
 ) -> tuple[Insight | None, list[str]]:
     """The insight with ids, or None and the problems phrased for the retry call."""
     concepts, misconceptions = counts.concept_aliases(), counts.misconception_aliases()
@@ -101,6 +121,20 @@ def check_insight(
                 seen.add(alias)
                 ids.append(misconceptions.resolve(alias))
         out_clusters.append(Cluster(draft.name.strip(), explanation, tuple(ids)))
+    if len(suggestions) > limits.max_suggestions:
+        problems.append(f"use at most {limits.max_suggestions} suggestions")
+    suggestion_keys: set[str] = set()
+    out_suggestions: list[str] = []
+    for number, suggestion in enumerate(suggestions, start=1):
+        label = f"suggestion {number}"
+        text = with_placeholders(label, suggestion, limits.suggestion_max_words)
+        if len(text) > limits.suggestion_max_chars:
+            problems.append(f"{label}: use at most {limits.suggestion_max_chars} characters")
+        key = normalize_key(text)
+        if key in suggestion_keys:
+            problems.append(f"{label}: must not duplicate another suggestion")
+        suggestion_keys.add(key)
+        out_suggestions.append(text)
     if problems:
         return None, list(dict.fromkeys(problems))
-    return Insight(out_narrative, tuple(out_clusters)), []
+    return Insight(out_narrative, tuple(out_clusters), tuple(out_suggestions)), []

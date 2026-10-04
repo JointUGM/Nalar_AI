@@ -85,11 +85,15 @@ class ClassInsightOut(BaseModel):
         "{{mastered|developing|not_observed:<concept_id>}}"
     )
     clusters: list[ClusterOut] = Field(description="class_map_insights.clusters")
+    suggestions: list[str] = Field(
+        description="Teacher actions; fill placeholders from the same counts snapshot"
+    )
 
     @classmethod
     def from_insight(cls, insight: Insight) -> "ClassInsightOut":
         return cls(
             narrative=insight.narrative,
+            suggestions=list(insight.suggestions),
             clusters=[
                 ClusterOut(
                     name=c.name,

@@ -1,6 +1,6 @@
 # S5 guards and fallback (design doc §6, §7). Owned by the pedagogy lead.
 # Bump `version` on every change; the loader rejects a template that fails the guard.
-version: 2
+version: 3
 
 # AI-4: the insight never states a count. Whole-word match after normalize_key
 # ("rata-rata" becomes "rata rata"). Provided names and statements are exempt.
@@ -58,6 +58,9 @@ insight:
   explanation_max_words: 50
   name_max_words: 8
   max_clusters: 6
+  max_suggestions: 3
+  suggestion_max_words: 60
+  suggestion_max_chars: 600
 
 # Parent summaries check digits, not number words: "satu sesi" is not a count of students.
 summary:

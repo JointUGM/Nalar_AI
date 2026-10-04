@@ -1,7 +1,11 @@
+import asyncio
+import json
+from dataclasses import replace
+
 import pytest
 
 from nalar_ai.platform.llm.fakes import ScriptedLLM
-from nalar_ai.platform.llm.ports import TransientLLMError
+from nalar_ai.platform.llm.ports import LLMRequest, LLMResponse, TransientLLMError
 from nalar_ai.shared.enums import AiPurpose, ModelTier
 from nalar_ai.shared.errors import (
     InvalidInputError,
@@ -43,6 +47,8 @@ async def test_a_clean_insight_comes_back_with_ids() -> None:
     (record,) = ledger.records
     assert record.purpose is AiPurpose.CLASS_MAP_INSIGHT
     assert record.model == MODELS[ModelTier.QUALITY]
+    assert record.prompt_version == "s5.class_insight@v2"
+    assert len(llm.requests) == 1 and len(result.insight.suggestions) == 1
 
 
 async def test_the_prompt_carries_fenced_teacher_text_and_the_counts() -> None:
@@ -84,8 +90,11 @@ async def test_invalid_json_counts_as_a_failed_try() -> None:
 
 async def test_a_provider_outage_propagates() -> None:
     llm = ScriptedLLM([TransientLLMError("503"), TransientLLMError("503")])
+    ledger = UsageLedger("r", 1.0)
     with pytest.raises(UpstreamUnavailableError):
-        await _run(llm)
+        await _run(llm, ledger=ledger)
+    assert len(ledger.records) == 2
+    assert all(r.status.value == "error" for r in ledger.records)
 
 
 async def test_inconsistent_counts_fail_before_any_model_call() -> None:
@@ -93,3 +102,44 @@ async def test_inconsistent_counts_fail_before_any_model_call() -> None:
     with pytest.raises(InvalidInputError):
         await _run(llm, counts=make_counts(total=5))
     assert llm.requests == []
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        insight_reply(suggestions=["Ajak 12 siswa berdiskusi."]),
+        insight_reply(suggestions=["Bahas {{count:m99}} siswa."]),
+        insight_reply(suggestions=[" "]),
+        insight_reply(suggestions=["Bahas gesekan."] * 2),
+        insight_reply(suggestions=["kata " * 61]),
+        insight_reply(suggestions=["gaya", "gerak", "gesek", "lembam"]),
+        json.dumps({k: v for k, v in json.loads(insight_reply()).items() if k != "suggestions"}),
+        insight_reply(suggestions=None),
+    ],
+)
+async def test_invalid_suggestions_retry_and_preserve_both_invocations(bad: str) -> None:
+    llm = ScriptedLLM([bad, insight_reply(suggestions=[])])
+    ledger = UsageLedger("r", 1.0)
+    result = await _run(llm, ledger=ledger)
+    assert result.retried and result.insight.suggestions == ()
+    assert len(ledger.records) == 2
+    assert "suggestion" in llm.requests[1].blocks[-1].text
+
+
+async def test_an_insight_timeout_records_the_cancelled_attempt() -> None:
+    class HangingLLM(ScriptedLLM):
+        async def complete(self, request: LLMRequest) -> LLMResponse:
+            self.requests.append(request)
+            await asyncio.sleep(10)
+            raise AssertionError("deadline must cancel the provider")
+
+    llm = HangingLLM()
+    ledger = UsageLedger("r", 1.0)
+    use_case = ClassInsightUseCase(
+        llm=make_gateway(llm),
+        config=CONFIG,
+        policy=replace(make_policy(), insight_timeout_s=0.01),
+    )
+    with pytest.raises(UpstreamUnavailableError):
+        await use_case.execute(make_counts(), ledger)
+    assert ledger.records and all(r.status.value == "error" for r in ledger.records)

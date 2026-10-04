@@ -1,22 +1,35 @@
 from collections.abc import Sequence
 from typing import Any
 
+import pytest
+
 from nalar_ai.subsystems.s5_insight_synthesizer.domain.insight import (
     Cluster,
     DraftCluster,
     Insight,
     check_insight,
 )
-from tests.support.s5 import CLUSTERS, LEXICON, LIMITS, M_BERAT, M_HABIS, NARRATIVE, make_counts
+from tests.support.s5 import (
+    C_GESEK,
+    CLUSTERS,
+    LEXICON,
+    LIMITS,
+    M_BERAT,
+    M_HABIS,
+    NARRATIVE,
+    make_counts,
+)
 
 
 def _check(
-    narrative: str = NARRATIVE, clusters: Sequence[dict[str, Any]] = CLUSTERS
+    narrative: str = NARRATIVE,
+    clusters: Sequence[dict[str, Any]] = CLUSTERS,
+    suggestions: Sequence[str] = (),
 ) -> tuple[Insight | None, list[str]]:
     drafts = [
         DraftCluster(c["name"], c["explanation"], tuple(c["misconceptions"])) for c in clusters
     ]
-    return check_insight(narrative, drafts, make_counts(), LEXICON, LIMITS)
+    return check_insight(narrative, drafts, make_counts(), LEXICON, LIMITS, suggestions)
 
 
 def test_a_clean_insight_is_rewritten_to_ids() -> None:
@@ -94,5 +107,57 @@ def test_a_teacher_name_with_a_digit_is_not_a_count() -> None:
         counts,
         LEXICON,
         LIMITS,
+        [],
     )
     assert problems == [] and insight is not None
+
+
+def test_suggestions_are_trimmed_and_all_placeholder_kinds_are_rewritten() -> None:
+    text = (
+        "  Ajak {{class:total}} siswa menjelaskan gaya gesek; {{class:incomplete}} belum selesai. "
+        "Bahas {{count:m1}} dan {{resolved:m1}} siswa, lalu {{mastered:c1}}, "
+        "{{developing:c1}} dan {{not_observed:c1}} siswa.  "
+    )
+    insight, problems = _check(suggestions=[text])
+    assert problems == [] and insight is not None
+    assert insight.suggestions == (
+        "Ajak {{total}} siswa menjelaskan gaya gesek; {{incomplete}} belum selesai. "
+        f"Bahas {{{{count:{M_HABIS}}}}} dan {{{{resolved:{M_HABIS}}}}} siswa, lalu "
+        f"{{{{mastered:{C_GESEK}}}}}, {{{{developing:{C_GESEK}}}}} dan "
+        f"{{{{not_observed:{C_GESEK}}}}} siswa.",
+    )
+
+
+@pytest.mark.parametrize(
+    "suggestions,problem",
+    [
+        (["Ajak 12 siswa menjelaskan."], "write no digits"),
+        (["Ajak dua siswa menjelaskan."], "write no number words"),
+        (["Ajak sebagian besar siswa menjelaskan."], "do not say how many"),
+        (["Bahas {{count:m99}} siswa."], "unknown"),
+        (["Bahas {{mastered:c99}} siswa."], "unknown"),
+        (["Bahas {{total siswa."], "placeholder"),
+        (["  "], "must not be empty"),
+        (["Bahas gaya.", " BAHAS   gaya! "], "duplicate"),
+        (["kata " * 61], "at most 60 words"),
+        (["k" * 601], "at most 600 characters"),
+        (["gaya", "gerak", "gesekan", "kelembaman"], "at most 3 suggestions"),
+    ],
+)
+def test_invalid_suggestions_reject_the_whole_insight(suggestions: list[str], problem: str) -> None:
+    insight, problems = _check(suggestions=suggestions)
+    assert insight is None
+    assert any(problem in p for p in problems)
+
+
+def test_suggestion_character_limit_applies_after_alias_expansion() -> None:
+    insight, problems = _check(suggestions=["k" * 565 + " {{count:m1}}"])
+    assert insight is None
+    assert problems == ["suggestion 1: use at most 600 characters"]
+
+
+def test_suggestions_at_the_limits_and_empty_list_are_valid() -> None:
+    for suggestions in ([], ["kata " * 60, "k" * 600, "Diskusikan gesekan."]):
+        insight, problems = _check(suggestions=suggestions)
+        assert problems == [] and insight is not None
+        assert insight.suggestions == tuple(s.strip() for s in suggestions)

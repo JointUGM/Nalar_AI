@@ -29,7 +29,10 @@ def load_synthesizer_config(path: Path = DEFAULT_CONFIG_PATH) -> SynthesizerConf
     numbers = NumberLexicon.build(
         number_words=raw["numbers"]["number_words"], count_claims=raw["numbers"]["count_claims"]
     )
-    insight = InsightLimits(**{key: int(value) for key, value in raw["insight"].items()})
+    try:
+        insight = InsightLimits(**raw["insight"])
+    except (TypeError, ValueError) as error:
+        raise ConfigurationError(f"invalid S5 insight limits: {error}") from error
     summary = raw["summary"]
     rules = SummaryRules.build(
         min_words=int(summary["min_words"]),

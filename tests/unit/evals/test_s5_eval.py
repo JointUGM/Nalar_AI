@@ -21,3 +21,15 @@ async def test_the_gate_fails_when_summaries_fall_back(
     report = await run_gate(container, runs=1)
     assert report["summary_model_rate"] == 0.0
     assert report["passed"] is False
+
+
+async def test_the_gate_fails_when_suggestions_invent_counts(
+    container: Container, llm: ScriptedLLM
+) -> None:
+    llm.queue(
+        *[insight_reply(suggestions=["Ajak 12 siswa menjelaskan."])] * 2,
+        *[summary_reply()] * len(SAMPLE_STUDENTS),
+    )
+    report = await run_gate(container, runs=1)
+    assert report["insight_valid_rate"] == 0.0
+    assert report["passed"] is False

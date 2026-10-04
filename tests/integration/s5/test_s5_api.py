@@ -80,7 +80,9 @@ def _summary_body(**changes: Any) -> dict[str, Any]:
 
 
 def test_class_insight_returns_placeholders_with_ids(client: TestClient, llm: ScriptedLLM) -> None:
-    llm.queue(insight_reply())
+    llm.queue(
+        insight_reply(suggestions=["Bahas {{count:m1}} siswa melalui pengamatan gaya gesek."])
+    )
     response = client.post(
         INSIGHT_URL, json=_insight_body(), headers={**AUTH, "X-Request-Id": "s5-1"}
     )
@@ -89,9 +91,22 @@ def test_class_insight_returns_placeholders_with_ids(client: TestClient, llm: Sc
     result = payload["result"]
     assert result["narrative"].startswith(f"{{{{count:{M_HABIS}}}}} dari {{{{total}}}} siswa")
     assert result["clusters"][0]["misconception_ids"] == [str(M_HABIS)]
+    assert result["suggestions"] == [
+        f"Bahas {{{{count:{M_HABIS}}}}} siswa melalui pengamatan gaya gesek."
+    ]
     assert [i["purpose"] for i in payload["invocations"]] == ["class_map_insight"]
     assert payload["invocations"][0]["request_id"] == "s5-1"
     assert payload["warnings"] == []
+
+
+def test_invalid_suggestions_fail_closed_with_both_invocations(
+    client: TestClient, llm: ScriptedLLM
+) -> None:
+    llm.queue(*[insight_reply(suggestions=["Ajak 12 siswa menjelaskan."])] * 2)
+    response = client.post(INSIGHT_URL, json=_insight_body(), headers=AUTH)
+    assert response.status_code == 502
+    assert response.json()["error"]["code"] == "ai_output_invalid"
+    assert len(response.json()["invocations"]) == 2
 
 
 def test_class_insight_reports_a_retry(client: TestClient, llm: ScriptedLLM) -> None:
