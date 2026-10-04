@@ -34,6 +34,7 @@ class ClusterDraftOut(BaseModel):
 class InsightDraftOut(BaseModel):
     narrative: str
     clusters: list[ClusterDraftOut]
+    suggestions: list[str]
 
 
 @dataclass(frozen=True, slots=True)
@@ -76,14 +77,21 @@ class ClassInsightUseCase:
                     policy=self._policy.insight_call(),
                 )
             except OutputValidationError:
-                problems = ["the answer was not valid JSON with a narrative and clusters"]
+                problems = [
+                    "the answer must be valid JSON with narrative, clusters and suggestions"
+                ]
             else:
                 drafts = [
                     DraftCluster(c.name, c.explanation, tuple(c.misconceptions))
                     for c in out.clusters
                 ]
                 insight, problems = check_insight(
-                    out.narrative, drafts, counts, self._config.numbers, self._config.insight
+                    out.narrative,
+                    drafts,
+                    counts,
+                    self._config.numbers,
+                    self._config.insight,
+                    out.suggestions,
                 )
                 if insight is not None:
                     return InsightResult(insight, retried=attempt > 0)

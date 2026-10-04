@@ -12,10 +12,15 @@ from nalar_ai.subsystems.s5_insight_synthesizer.infrastructure.config_loader imp
 
 def test_the_shipped_config_loads() -> None:
     config = load_synthesizer_config()
-    assert config.version == 2
+    assert config.version == 3
     assert "satu" in config.numbers.number_words
     assert "sebagian besar" in config.numbers.count_claims
     assert config.insight.max_clusters == 6
+    assert (
+        config.insight.max_suggestions,
+        config.insight.suggestion_max_words,
+        config.insight.suggestion_max_chars,
+    ) == (3, 60, 600)
     assert (config.summary.min_words, config.summary.max_words) == (60, 150)
     assert config.summary.banned_term_exceptions == (("salin", ("saling",)),)
     assert "menyalin" in config.summary.banned_terms
@@ -41,4 +46,28 @@ def test_a_template_that_fails_the_guard_is_rejected(tmp_path: Path) -> None:
     path = tmp_path / "synthesizer.yaml"
     path.write_text(text, encoding="utf-8")
     with pytest.raises(ConfigurationError, match="template fails the guard"):
+        load_synthesizer_config(path)
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("max_suggestions", "-1"),
+        ("max_suggestions", "true"),
+        ("suggestion_max_words", "0"),
+        ("suggestion_max_words", "60.5"),
+        ("suggestion_max_chars", "0"),
+        ("suggestion_max_chars", '"600"'),
+    ],
+)
+def test_invalid_suggestion_limits_reject_configuration(
+    tmp_path: Path, field: str, value: str
+) -> None:
+    import yaml
+
+    raw = yaml.safe_load(DEFAULT_CONFIG_PATH.read_text(encoding="utf-8"))
+    raw["insight"][field] = yaml.safe_load(value)
+    path = tmp_path / "synthesizer.yaml"
+    path.write_text(yaml.safe_dump(raw), encoding="utf-8")
+    with pytest.raises(ConfigurationError, match="invalid S5 insight limits"):
         load_synthesizer_config(path)
