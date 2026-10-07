@@ -29,14 +29,12 @@ ANSWER = {
             "elements": [
                 {
                     "element": "Pemahaman IPA",
-                    "text": "Pada akhir fase D, peserta didik mampu mengukur.",
-                    "page_start": 13,
-                    "page_end": 13,
-                    "statements": [
+                    "pieces": [
                         {
                             "text": "Pada akhir fase D, peserta didik mampu mengukur.",
                             "page_start": 13,
                             "page_end": 13,
+                            "statement": True,
                         }
                     ],
                 }
@@ -70,7 +68,7 @@ async def test_pdf_text_is_fenced_as_data() -> None:
 
 async def test_pages_outside_the_excerpt_are_repaired_once() -> None:
     wrong = json.loads(json.dumps(ANSWER))
-    wrong["subjects"][0]["elements"][0]["page_end"] = 99
+    wrong["subjects"][0]["elements"][0]["pieces"][0]["page_end"] = 99
     llm = ScriptedLLM([json.dumps(wrong), json.dumps(ANSWER)])
     draft = await DraftCurriculumUseCase(llm=make_gateway(llm), timeout_s=TIMEOUT_S).execute(
         DraftCurriculumCommand("CP", PAGES), UsageLedger("r", 1.0)
@@ -108,3 +106,33 @@ async def test_one_call_is_cut_off_at_the_configured_deadline() -> None:
     assert slow.calls == 1
     (record,) = ledger.records
     assert record.error_message is not None and "deadline" in record.error_message
+
+
+async def test_each_sentence_is_written_once_and_the_draft_is_rebuilt_from_pieces() -> None:
+    answer = json.loads(json.dumps(ANSWER))
+    answer["subjects"][0]["elements"][0]["pieces"] = [
+        {"text": "1. Mengamati", "page_start": 13, "page_end": 13, "statement": False},
+        {"text": "Menggunakan alat bantu.", "page_start": 13, "page_end": 14, "statement": True},
+        {"text": "Memperhatikan detail.", "page_start": 14, "page_end": 14, "statement": True},
+    ]
+    llm = ScriptedLLM([json.dumps(answer)])
+    draft = await DraftCurriculumUseCase(llm=make_gateway(llm), timeout_s=TIMEOUT_S).execute(
+        DraftCurriculumCommand("CP", PAGES), UsageLedger("r", 1.0)
+    )
+    element = draft.subjects[0].elements[0]
+    assert element.text == "1. Mengamati Menggunakan alat bantu. Memperhatikan detail."
+    assert (element.page_start, element.page_end) == (13, 14)
+    assert [(s.text, s.page_start, s.page_end) for s in element.statements] == [
+        ("Menggunakan alat bantu.", 13, 14),
+        ("Memperhatikan detail.", 14, 14),
+    ]
+
+
+async def test_an_element_without_pieces_is_dropped() -> None:
+    answer = json.loads(json.dumps(ANSWER))
+    answer["subjects"][0]["elements"][0]["pieces"] = []
+    llm = ScriptedLLM([json.dumps(answer)])
+    draft = await DraftCurriculumUseCase(llm=make_gateway(llm), timeout_s=TIMEOUT_S).execute(
+        DraftCurriculumCommand("CP", PAGES), UsageLedger("r", 1.0)
+    )
+    assert draft.subjects[0].elements == []

@@ -20,6 +20,7 @@ import asyncio
 import json
 import re
 import sys
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -39,12 +40,54 @@ def _key(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
+# Mirrors Nalar_Backend `domain/national_references.py::verify_source` (D-CPD-14, D-CPD-15); keep the
+# two in step, or recall here stops meaning "statements production keeps".
+_LAYOUT_LINE_MAX = 160
+_SENTENCE_END = (".", "!", "?", ";", ":", ",")
+
+
+def _comparable(text: str) -> str:
+    return re.sub(r"-\s+", "-", _key(text))
+
+
+def _layout_lines(pages: dict[int, str]) -> set[str]:
+    counts = Counter(
+        key
+        for text in pages.values()
+        if (lines := [k for line in text.splitlines() if (k := _key(line).casefold())])
+        for key in {lines[0], lines[-1]}
+    )
+    return {
+        key
+        for key, seen in counts.items()
+        if seen >= 2 and 0 < len(key) <= _LAYOUT_LINE_MAX and not key.endswith(_SENTENCE_END)
+    }
+
+
+def _joined_without_layout(start: int, end: int, pages: dict[int, str]) -> str:
+    layout = _layout_lines(pages)
+    parts = []
+    for page in range(start, end + 1):
+        lines = [line for line in pages[page].splitlines() if _key(line)]
+        low, high = 0, len(lines)
+        while page > start and low < high and _key(lines[low]).casefold() in layout:
+            low += 1
+        while page < end and high > low and _key(lines[high - 1]).casefold() in layout:
+            high -= 1
+        parts.append(" ".join(lines[low:high]))
+    return " ".join(parts)
+
+
 def _verbatim(text: str, start: int, end: int, pages: dict[int, str]) -> bool:
     """The backend's verify_source: every cited page has text and the quote occurs in them."""
     if start < 1 or end < start or any(not pages.get(p, "").strip() for p in range(start, end + 1)):
         return False
-    value = _key(text)
-    return bool(value) and value in _key(" ".join(pages[p] for p in range(start, end + 1)))
+    value = _comparable(text)
+    if not value:
+        return False
+    if value in _comparable(" ".join(pages[p] for p in range(start, end + 1))):
+        return True
+    return start < end and value in _comparable(_joined_without_layout(start, end, pages))
 
 
 def score(
