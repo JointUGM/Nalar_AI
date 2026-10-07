@@ -45,7 +45,7 @@ def test_every_service_route_rejects_unauthenticated_requests(
     assert isinstance(client.app, FastAPI)
     paths = client.app.openapi()["paths"]
     protected = [path for path in paths if path.startswith("/v1/")]
-    assert len(protected) == 14
+    assert len(protected) == 15
     for path in protected:
         headers = {} if key is None else {"X-Service-Key": key}
         response = client.post(path, headers=headers, json={})
