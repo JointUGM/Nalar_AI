@@ -33,6 +33,7 @@ def test_ai_purposes_exist_in_the_schema_and_migrations_002_and_003() -> None:
         "kb_extract",
         "kb_misconceptions",
         "cp_align",
+        "cp_extract",
         "kb_dedup",
         "embedding",
         "turn_analyze",

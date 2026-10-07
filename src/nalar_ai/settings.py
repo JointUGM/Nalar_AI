@@ -51,6 +51,8 @@ class Settings(BaseSettings):
     s1_cp_min_similarity: float = 0.25
     s1_max_section_claude_tokens: int = 80_000
     s1_evidence_pack_claude_tokens: int = 3_000
+    s1_cp_excerpt_max_chars: int = 60_000
+    s1_cp_draft_timeout_seconds: float = 75.0
 
     s2_generate_timeout_seconds: float = 45.0
     s2_critic_timeout_seconds: float = 25.0

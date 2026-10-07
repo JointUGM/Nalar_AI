@@ -4,6 +4,7 @@ from nalar_ai.platform.http.envelope import ERROR_RESPONSES
 from nalar_ai.platform.http.security import require_service_key
 from nalar_ai.subsystems.s1_knowledge_base.api import (
     align_cp,
+    curriculum,
     dedupe,
     extract,
     misconceptions,
@@ -21,3 +22,4 @@ router.include_router(extract.router)
 router.include_router(dedupe.router)
 router.include_router(align_cp.router)
 router.include_router(misconceptions.router)
+router.include_router(curriculum.router)

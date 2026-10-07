@@ -20,6 +20,7 @@ class AiPurpose(StrEnum):
     KB_EXTRACT = "kb_extract"
     KB_MISCONCEPTIONS = "kb_misconceptions"
     CP_ALIGN = "cp_align"
+    CP_EXTRACT = "cp_extract"
     KB_DEDUP = "kb_dedup"
     EMBEDDING = "embedding"
     TURN_ANALYZE = "turn_analyze"
