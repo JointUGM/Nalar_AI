@@ -193,10 +193,12 @@ def test_invalid_bank_gets_one_fast_repair_without_weakening_the_guard(client, l
 def test_sibling_bank_failures_settle_and_preserve_all_paid_attempts(client, llm):
     rejected = bank()
     rejected["questions"][0]["text"] = "Mengapa jawabanmu benar?"
-    llm.queue(*(json.dumps(x) for x in [core(), rejected, rejected, rejected, rejected]))
+    # Per target: bank, narrow repair + retry, whole-bank repair + retry.
+    llm.queue(*(json.dumps(x) for x in [core(), *[rejected] * 10]))
     response = client.post("/v1/s2/missions/generate", json=mission_input(), headers=HEADERS)
     assert response.status_code == 502
-    assert len(response.json()["invocations"]) == 5
+    assert response.json()["error"]["code"] == "ai_output_invalid"
+    assert len(response.json()["invocations"]) == 11
 
 
 def test_rubric_only_critic_repair_preserves_the_accepted_banks(client, llm):
@@ -268,11 +270,50 @@ def test_narrow_repair_cannot_change_an_accepted_question(client, llm):
     rejected = bank()
     rejected["questions"][0]["text"] = "Mengapa jawabanmu benar?"
     wrong = {"replacements": [{"index": 1, "text": bank()["questions"][0]["text"]}]}
-    llm.queue(*(json.dumps(x) for x in [core(), rejected, wrong, bank()]))
+    llm.queue(
+        *(json.dumps(x) for x in [core(), rejected, wrong, wrong, rejected, rejected, bank()])
+    )
     response = client.post("/v1/s2/missions/generate", json=mission_input(), headers=HEADERS)
     assert response.status_code == 502
-    assert len(response.json()["invocations"]) == 4
+    assert response.json()["error"]["code"] == "ai_output_invalid"
+    assert len(response.json()["invocations"]) == 7
     assert "result" not in response.json()
+
+
+def test_narrow_repair_ignores_extra_indices_and_keeps_accepted_questions(client, llm):
+    # Live 2026-10-09 (job fccb9551): the fast model returned the asked index plus another.
+    rejected = bank()
+    rejected["questions"][0]["text"] = "Mengapa jawabanmu benar?"
+    extra = {
+        "replacements": [
+            {"index": 0, "text": bank()["questions"][0]["text"]},
+            {"index": 5, "text": "Mengapa jawabanmu benar?"},
+        ]
+    }
+    llm.queue(*(json.dumps(x) for x in [core(), rejected, extra, bank(), {"issues": []}]))
+    response = client.post("/v1/s2/missions/generate", json=mission_input(), headers=HEADERS)
+    assert response.status_code == 200, response.text
+    questions = response.json()["result"]["context_pack"]["question_bank"]
+    assert [q["text"] for q in questions[:16]] == [q["text"] for q in bank()["questions"]]
+
+
+def test_failed_narrow_repair_falls_back_to_a_guarded_whole_bank_repair(client, llm):
+    # Live 2026-10-09 (job 0d3fe93a): the narrow repair kept a forbidden word and the job died.
+    rejected = bank()
+    rejected["questions"][0]["text"] = "Mengapa jawabanmu benar?"
+    still_bad = {"replacements": [{"index": 0, "text": "Apakah itu benar?"}]}
+    llm.queue(
+        *(
+            json.dumps(x)
+            for x in [core(), rejected, still_bad, still_bad, bank(), bank(), {"issues": []}]
+        )
+    )
+    response = client.post("/v1/s2/missions/generate", json=mission_input(), headers=HEADERS)
+    assert response.status_code == 200, response.text
+    records = response.json()["invocations"]
+    assert sum("repair_bank" in i["prompt_version"] for i in records) == 1
+    questions = response.json()["result"]["context_pack"]["question_bank"]
+    assert not any("benar" in q["text"] for q in questions)
 
 
 def test_long_approved_titles_fit_the_contract_and_remain_guarded_in_s3(client, llm):

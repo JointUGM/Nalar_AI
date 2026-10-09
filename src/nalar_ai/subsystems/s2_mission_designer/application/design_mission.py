@@ -231,6 +231,8 @@ class DesignMissionUseCase:
                 "forbidden_verdict_words": list(self._module.question_guard.verdict_terms),
             }
             policy = replace(self._module.generation_policy, max_repairs=0)
+            # Repairs run on the fast tier; one retry there is far cheaper than losing the job.
+            repair_policy = self._module.generation_policy
             variables = {"context": _data("teacher_context", bank_context), "feedback": feedback}
             try:
                 draft = await self._llm.generate(
@@ -271,32 +273,37 @@ class DesignMissionUseCase:
                         return BankDraft(questions=questions)
 
                     def repair_check(out: QuestionRepairs) -> list[str]:
-                        found = [r.index for r in out.replacements]
-                        if set(found) != indices or len(found) != len(indices):
+                        # Extra indices are dropped by repaired_bank, so they cannot touch an
+                        # accepted question; only a missing one is a failure.
+                        if not indices <= {r.index for r in out.replacements}:
                             return [f"replace exactly these question indices: {sorted(indices)}"]
                         return self._bank_problems(repaired_bank(out), _terms(body, core))
 
-                    repairs = await self._llm.generate(
-                        prompt_id="s2.repair_questions",
-                        variables={
-                            **variables,
-                            "feedback": repair_feedback
-                            + f"\nReplace ONLY indices {sorted(indices)}.",
-                        },
-                        output_model=QuestionRepairs,
-                        ledger=ledger,
-                        retrieval=bank_retrieval,
-                        policy=policy,
-                        semantic_check=repair_check,
-                    )
-                    return repaired_bank(repairs)
+                    try:
+                        repairs = await self._llm.generate(
+                            prompt_id="s2.repair_questions",
+                            variables={
+                                **variables,
+                                "feedback": repair_feedback
+                                + f"\nReplace ONLY indices {sorted(indices)}.",
+                            },
+                            output_model=QuestionRepairs,
+                            ledger=ledger,
+                            retrieval=bank_retrieval,
+                            policy=repair_policy,
+                            semantic_check=repair_check,
+                        )
+                    except OutputValidationError:
+                        pass  # Fall back to the guarded whole-bank repair below.
+                    else:
+                        return repaired_bank(repairs)
             return await self._llm.generate(
                 prompt_id="s2.repair_bank",
                 variables={**variables, "feedback": repair_feedback},
                 output_model=BankDraft,
                 ledger=ledger,
                 retrieval=bank_retrieval,
-                policy=policy,
+                policy=repair_policy,
                 semantic_check=lambda b: self._bank_problems(b, _terms(body, core)),
             )
 
