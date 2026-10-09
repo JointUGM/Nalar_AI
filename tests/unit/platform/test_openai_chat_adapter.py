@@ -295,6 +295,14 @@ def test_normalize_unwraps_only_redundant_array_field_wrappers() -> None:
     assert normalize_arguments({"box": {"box": []}}, schema) == {"box": {"box": []}}
 
 
+def test_normalize_unwraps_a_stringified_redundant_array_wrapper() -> None:
+    # Live S1 misconceptions, 2026-10-09: Sonnet 5 sent the whole answer as a string under its key.
+    value = {"items": json.dumps({"items": [{"name": "a"}]})}
+    assert normalize_arguments(value, NESTED_SCHEMA)["items"] == [{"name": "a", "note": None}]
+    wrong_key = json.dumps({"other": []})
+    assert normalize_arguments({"items": wrong_key}, NESTED_SCHEMA)["items"] == wrong_key
+
+
 def test_normalize_unwraps_arguments_nested_under_one_unknown_key() -> None:
     # Claude via SumoPod sometimes nests the whole answer under "$PARAMETER_NAME" (P13).
     wrapped = {"$PARAMETER_NAME": {"items": [], "label": "ok"}}

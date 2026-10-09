@@ -8,6 +8,7 @@ tool call.
 
 import json
 from collections.abc import Mapping
+from contextlib import suppress
 from typing import Any
 
 import httpx
@@ -158,6 +159,9 @@ def _normalize(value: Any, schema: dict[str, Any], root: dict[str, Any]) -> Any:
                 if isinstance(field_ref, str) and field_ref.startswith("#/$defs/"):
                     field_schema = root.get("$defs", {}).get(field_ref.removeprefix("#/$defs/"), {})
                 field = value[name]
+                if field_schema.get("type") == "array" and isinstance(field, str):
+                    with suppress(ValueError):  # the wrapper below can arrive as a JSON string
+                        field = json.loads(field)
                 if (
                     field_schema.get("type") == "array"
                     and isinstance(field, dict)
