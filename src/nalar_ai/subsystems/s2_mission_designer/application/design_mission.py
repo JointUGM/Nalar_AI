@@ -17,7 +17,7 @@ from nalar_ai.shared.context_pack import validate_pack
 from nalar_ai.shared.enums import ProbeStrategy, RetrievalPath, RetrievalSource
 from nalar_ai.shared.errors import InvalidInputError, OutputValidationError
 from nalar_ai.shared.provenance import RetrievalRef, UsageLedger
-from nalar_ai.shared.question_guard import check_text
+from nalar_ai.shared.question_guard import GuardLexicon, check_text
 from nalar_ai.shared.text import contains_phrase, fence_untrusted, normalize_key, stem_spans
 from nalar_ai.subsystems.s2_mission_designer.application.policy import DesignerPolicy
 from nalar_ai.subsystems.s2_mission_designer.application.schemas import (
@@ -198,7 +198,9 @@ class DesignMissionUseCase:
                 ledger=ledger,
                 retrieval=retrieval,
                 semantic_check=lambda c: self._core_problems(body, c),
-                policy=self._module.generation_policy,
+                # Live 2026-10-09: about half of anchors use an ordinary blocked word ("tepat
+                # di", "hampir sama"); one named-word repair still failed 1 in 8, so allow two.
+                policy=replace(self._module.generation_policy, max_repairs=2),
             )
 
         core = await core_call("(none)")
@@ -456,10 +458,9 @@ class DesignMissionUseCase:
         )
 
     def _core_problems(self, body: GenerateMissionIn, core: CoreDraft) -> list[str]:
-        blocked = check_text(
-            core.anchor_problem, "", (), _terms(body, core), self._module.anchor_guard
+        return _guard_problems(
+            "anchor_problem", core.anchor_problem, _terms(body, core), self._module.anchor_guard
         )
-        return [f"anchor_problem: {blocked.value}"] if blocked else []
 
     def _bank_problems(self, bank: BankDraft, terms: list[str]) -> list[str]:
         counts = Counter(q.move for q in bank.questions)
@@ -471,23 +472,31 @@ class DesignMissionUseCase:
         if len({normalize_key(q.text) for q in bank.questions}) != len(bank.questions):
             problems.append("questions: duplicate wording")
         for i, q in enumerate(bank.questions):
-            blocked = check_text(q.text, "", (), terms, self._module.question_guard)
-            if blocked:
-                problems.append(f"questions.{i}: {blocked.value}")
-                if blocked.value == "blocked_verdict":
-                    words = [
-                        w
-                        for w in self._module.question_guard.verdict_terms
-                        if contains_phrase(normalize_key(q.text), w)
-                    ]
-                    problems.append(
-                        f"questions.{i}: omit these verdict words entirely: {', '.join(words)}"
-                    )
-                elif blocked.value == "blocked_new_terms":
-                    words = [
-                        t for t in terms if stem_spans(normalize_key(q.text), normalize_key(t))
-                    ]
-                    problems.append(
-                        f"questions.{i}: omit these hidden answer terms entirely: {', '.join(words)}"
-                    )
+            problems += _guard_problems(
+                f"questions.{i}", q.text, terms, self._module.question_guard
+            )
         return problems
+
+
+def _guard_problems(path: str, text: str, terms: list[str], lexicon: GuardLexicon) -> list[str]:
+    """Repair feedback that names every offending word: a bare "blocked_verdict" leaves the
+    model guessing, and ordinary words ("tepat di", "hampir sama") are easy to miss."""
+    blocked = check_text(text, "", (), terms, lexicon)
+    if not blocked:
+        return []
+    key = normalize_key(text)
+    verdicts = [w for w in lexicon.verdict_terms if contains_phrase(key, w)]
+    hidden = [t for t in terms if stem_spans(key, normalize_key(t))]
+    return [
+        f"{path}: {blocked.value}",
+        *(
+            [f"{path}: omit these verdict words entirely: {', '.join(verdicts)}"]
+            if verdicts
+            else []
+        ),
+        *(
+            [f"{path}: omit these hidden answer terms entirely: {', '.join(hidden)}"]
+            if hidden
+            else []
+        ),
+    ]
