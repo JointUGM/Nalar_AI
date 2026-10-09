@@ -333,9 +333,7 @@ class DesignMissionUseCase:
                             problems.append(f"bank target must be one of {', '.join(banks)}")
                             continue
                         texts = [q.text for q in banks[issue.target].questions]
-                    elif issue.target is not None:
-                        problems.append("non-bank issues must have target null")
-                        continue
+                    # A target on a non-bank issue is unused, so it is ignored rather than fatal.
                     elif issue.component == "rubric":
                         texts = [s for levels in core.rubric.model_dump().values() for s in levels]
                     else:
@@ -372,9 +370,14 @@ class DesignMissionUseCase:
             if not critic.issues:
                 break
             if attempt == 1:
+                blocking = [i for i in critic.issues if i.severity == "blocking"]
+                if not blocking:
+                    # Wording nits after a repair go to the teacher's mandatory review; the
+                    # deterministic leak and verdict guards have already passed.
+                    break
                 raise OutputValidationError(
                     "mission critic rejected the repaired draft",
-                    details={"components": [i.component for i in critic.issues]},
+                    details={"components": [i.component for i in blocking]},
                 )
             feedback = _data("critic_feedback", [i.model_dump() for i in critic.issues])
             parts = {i.component for i in critic.issues if i.component != "bank"}

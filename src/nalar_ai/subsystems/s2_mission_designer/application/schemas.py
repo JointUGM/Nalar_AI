@@ -109,6 +109,8 @@ class QuestionRepairs(BaseModel):
 class CriticIssue(BaseModel):
     component: Literal["anchor_problem", "reference_reasoning", "rubric", "bank"]
     target: Literal["c1", "c2", "c3"] | None = None
+    # Missing means blocking: only an explicit "minor" may survive the second pass.
+    severity: Literal["blocking", "minor"] = "blocking"
     problem: Text
     quote: str = Field(min_length=1, max_length=500)
 
