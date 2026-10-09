@@ -126,10 +126,10 @@ def test_answer_keys_and_unlinked_paragraphs_never_enter_a_prompt(client, llm):
 def test_core_answer_leak_fails_closed_with_every_invocation(client, llm):
     leaked = core()
     leaked["anchor_problem"] = "Gesekan memperlambat bola, mengapa?"
-    llm.queue(json.dumps(leaked), json.dumps(leaked))
+    llm.queue(json.dumps(leaked), json.dumps(leaked), json.dumps(leaked))
     response = client.post("/v1/s2/missions/generate", json=mission_input(), headers=HEADERS)
     assert response.status_code == 502
-    assert len(response.json()["invocations"]) == 2
+    assert len(response.json()["invocations"]) == 3
 
 
 def test_critic_repairs_only_the_broken_bank_then_rechecks(client, llm):
@@ -314,6 +314,22 @@ def test_failed_narrow_repair_falls_back_to_a_guarded_whole_bank_repair(client, 
     assert sum("repair_bank" in i["prompt_version"] for i in records) == 1
     questions = response.json()["result"]["context_pack"]["question_bank"]
     assert not any("benar" in q["text"] for q in questions)
+
+
+def test_anchor_repair_names_every_blocked_word(client, llm):
+    # Live 2026-10-09 (job 186ffe1f): "hampir sama", "tepat di jalur" and the model's own
+    # term "merambat" blocked the anchor, and an unnamed "blocked_verdict" repair failed again.
+    blocked = core()
+    blocked["anchor_problem"] = (
+        "Bola Rani berhenti tepat di tepi halaman yang bergesekan dengan rumput. Mengapa?"
+    )
+    llm.queue(json.dumps(blocked))
+    queue_mission(llm)
+    response = client.post("/v1/s2/missions/generate", json=mission_input(), headers=HEADERS)
+    assert response.status_code == 200, response.text
+    repair = llm.requests[1].blocks[-1].text
+    assert "omit these verdict words entirely: tepat" in repair
+    assert "omit these hidden answer terms entirely: Gesekan" in repair
 
 
 def test_long_approved_titles_fit_the_contract_and_remain_guarded_in_s3(client, llm):
