@@ -247,6 +247,67 @@ def test_s2_requires_the_service_key(client, path):
     assert client.post(path, json={}).status_code == 401
 
 
+def test_minor_critic_issues_after_repair_go_to_teacher_review(client, llm):
+    # Live 2026-10-09 (jobs ea36201a, 2139127e): the second pass found only wording nits and
+    # the job died; minor issues are left to the teacher's mandatory review.
+    issue = {
+        "issues": [
+            {
+                "component": "rubric",
+                "target": None,
+                "severity": "minor",
+                "problem": "Perjelas deskriptor",
+                "quote": "claim tingkat 0 pada bola",
+            }
+        ]
+    }
+    queue_mission(llm, issue)
+    llm.queue(json.dumps(core()), json.dumps(issue))
+    response = client.post("/v1/s2/missions/generate", json=mission_input(), headers=HEADERS)
+    assert response.status_code == 200, response.text
+    records = response.json()["invocations"]
+    assert sum("critic" in i["prompt_version"] for i in records) == 2
+
+
+def test_critic_issue_without_severity_is_blocking(client, llm):
+    issue = {
+        "issues": [
+            {
+                "component": "rubric",
+                "target": None,
+                "problem": "Deskriptor salah secara ilmiah",
+                "quote": "claim tingkat 0 pada bola",
+            }
+        ]
+    }
+    queue_mission(llm, issue)
+    llm.queue(json.dumps(core()), json.dumps(issue))
+    response = client.post("/v1/s2/missions/generate", json=mission_input(), headers=HEADERS)
+    assert response.status_code == 502
+    assert response.json()["error"]["code"] == "ai_output_invalid"
+
+
+def test_critic_target_on_a_non_bank_issue_is_ignored_not_fatal(client, llm):
+    # Live 2026-10-09 (job c8a1ffc8): the critic tagged a rubric issue "c1" twice and the job died.
+    issue = {
+        "issues": [
+            {
+                "component": "rubric",
+                "target": "c1",
+                "problem": "Perjelas deskriptor",
+                "quote": "claim tingkat 0 pada bola",
+            }
+        ]
+    }
+    queue_mission(llm, issue)
+    llm.queue(json.dumps(core()), '{"issues":[]}')
+    response = client.post("/v1/s2/missions/generate", json=mission_input(), headers=HEADERS)
+    assert response.status_code == 200, response.text
+    records = response.json()["invocations"]
+    assert sum("critic" in i["prompt_version"] for i in records) == 2
+    assert sum("generate_core" in i["prompt_version"] for i in records) == 2
+
+
 def test_critic_fabricated_evidence_fails_closed_and_keeps_invocations(client, llm):
     issue = {
         "issues": [
