@@ -3,6 +3,7 @@ import json
 from collections import Counter
 from collections.abc import Sequence
 from dataclasses import replace
+from typing import Any
 from uuid import UUID
 
 from nalar_ai.platform.http.context_pack import (
@@ -104,7 +105,13 @@ class DesignMissionUseCase:
     def __init__(self, llm: LLMGateway, module: DesignerPolicy, tokens: TokenCounter) -> None:
         self._llm, self._module, self._tokens = llm, module, tokens
 
-    async def execute(self, body: GenerateMissionIn, ledger: UsageLedger) -> GenerateMissionOut:
+    async def execute(
+        self,
+        body: GenerateMissionIn,
+        ledger: UsageLedger,
+        *,
+        revision: dict[str, Any] | None = None,
+    ) -> GenerateMissionOut:
         targets = {f"c{i}": c for i, c in enumerate(body.targets, 1)}
         wrong = {f"m{i}": m for i, m in enumerate(body.misconceptions, 1)}
         _unique([c.id for c in body.targets], "target")
@@ -162,7 +169,7 @@ class DesignMissionUseCase:
             )
 
         retrieval = refs(list(targets))
-        context = {
+        context: dict[str, Any] = {
             "objective": body.learning_objective,
             "forbidden_verdict_words": list(self._module.question_guard.verdict_terms),
             "targets": [
@@ -190,14 +197,43 @@ class DesignMissionUseCase:
             ],
         }
 
+        if revision is not None:
+            context["revision"] = revision
+
+        def revision_core_problems(candidate: CoreDraft) -> list[str]:
+            problems = self._core_problems(body, candidate)
+            if revision is not None:
+                previous = revision.get("base", {}).get("context_pack", {}).get("targets", [])
+                current_ids = {str(t.id) for t in body.targets}
+                current_names = {normalize_key(t.name) for t in body.targets}
+                hidden = normalize_key(
+                    candidate.reference_reasoning
+                    + " "
+                    + " ".join(
+                        value
+                        for levels in candidate.rubric.model_dump().values()
+                        for value in levels
+                    )
+                )
+                for old in previous:
+                    if (
+                        old["id"] not in current_ids
+                        and normalize_key(old["name"]) not in current_names
+                        and contains_phrase(hidden, normalize_key(old["name"]))
+                    ):
+                        problems.append(
+                            f"removed target must not remain in reference or rubric: {old['name']}"
+                        )
+            return problems
+
         async def core_call(feedback: str) -> CoreDraft:
             return await self._llm.generate(
-                prompt_id="s2.generate_core",
+                prompt_id="s2.revise_core" if revision is not None else "s2.generate_core",
                 variables={"context": _data("teacher_context", context), "feedback": feedback},
                 output_model=CoreDraft,
                 ledger=ledger,
                 retrieval=retrieval,
-                semantic_check=lambda c: self._core_problems(body, c),
+                semantic_check=revision_core_problems,
                 # Live 2026-10-09: about half of anchors use an ordinary blocked word ("tepat
                 # di", "hampir sama"); one named-word repair still failed 1 in 8, so allow two.
                 policy=replace(self._module.generation_policy, max_repairs=2),
@@ -207,7 +243,7 @@ class DesignMissionUseCase:
 
         async def bank_call(alias: str, feedback: str) -> BankDraft:
             bank_retrieval = refs([alias])
-            bank_context = {
+            bank_context: dict[str, Any] = {
                 **context,
                 "targets": [
                     {
@@ -235,10 +271,12 @@ class DesignMissionUseCase:
             policy = replace(self._module.generation_policy, max_repairs=0)
             # Repairs run on the fast tier; one retry there is far cheaper than losing the job.
             repair_policy = self._module.generation_policy
+            if revision is not None:
+                bank_context["revision"] = revision
             variables = {"context": _data("teacher_context", bank_context), "feedback": feedback}
             try:
                 draft = await self._llm.generate(
-                    prompt_id="s2.generate_bank",
+                    prompt_id="s2.revise_bank" if revision is not None else "s2.generate_bank",
                     variables=variables,
                     output_model=BankDraft,
                     ledger=ledger,
@@ -343,7 +381,7 @@ class DesignMissionUseCase:
                 return problems
 
             critic = await self._llm.generate(
-                prompt_id="s2.critic",
+                prompt_id="s2.revision_critic" if revision is not None else "s2.critic",
                 variables={
                     "context": _data("teacher_context", context),
                     "draft": _data(
@@ -394,7 +432,7 @@ class DesignMissionUseCase:
                         else core.answer_terms,
                     }
                 )
-                problems = self._core_problems(body, core)
+                problems = revision_core_problems(core)
                 if problems:
                     raise OutputValidationError(
                         "repaired core failed the leak guard", details={"errors": problems}

@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import Any, Literal
 
-from pydantic import SecretStr
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -55,6 +55,8 @@ class Settings(BaseSettings):
     s1_cp_draft_timeout_seconds: float = 75.0
 
     s2_generate_timeout_seconds: float = 45.0
+    s2_revision_timeout_seconds: float = Field(default=180.0, gt=0)
+    s2_revision_max_calls: int = Field(default=12, ge=1, le=50)
     s2_critic_timeout_seconds: float = 25.0
     s2_grounding_tokens: int = 2000
     s2_paragraphs_per_target: int = 3
