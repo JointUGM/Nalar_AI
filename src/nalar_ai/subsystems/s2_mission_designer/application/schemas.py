@@ -1,7 +1,7 @@
 from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
 from nalar_ai.platform.http.context_pack import ContextPackIn, Cue
 from nalar_ai.shared.enums import ChunkKind, ProbeStrategy
@@ -117,3 +117,66 @@ class CriticIssue(BaseModel):
 
 class CriticDraft(BaseModel):
     issues: list[CriticIssue] = Field(max_length=20)
+
+
+class RevisionFeedback(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    id: UUID
+    component: Literal["anchor_problem", "reference_reasoning", "rubric", "bank"]
+    issue: Literal[
+        "too_long",
+        "too_difficult",
+        "unfamiliar_context",
+        "unclear_levels",
+        "repetitive",
+        "gives_hint",
+        "science_concern",
+        "other",
+    ]
+    desired_change: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=1, max_length=1000)
+    ]
+    question_ids: list[str] = Field(default_factory=list, max_length=200)
+
+    @model_validator(mode="after")
+    def valid_questions(self) -> "RevisionFeedback":
+        if self.question_ids and self.component != "bank":
+            raise ValueError("question_ids are only valid for bank feedback")
+        if len(set(self.question_ids)) != len(self.question_ids):
+            raise ValueError("question_ids must be unique")
+        return self
+
+
+class RevisionBase(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    learning_objective: str = Field(min_length=1, max_length=1000)
+    generation: GenerateMissionOut
+
+
+class ReviseMissionIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    base: RevisionBase
+    generation_input: GenerateMissionIn
+    feedback: list[RevisionFeedback] = Field(default_factory=list, max_length=8)
+
+
+class ReviseMissionOut(BaseModel):
+    generation: GenerateMissionOut
+    effective_scope: list[str]
+    changed_fields: list[str]
+
+
+class RubricPatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    rubric: MissionRubric
+
+
+class QuestionTextReplacement(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    id: str = Field(min_length=1, max_length=64)
+    text: Text
+
+
+class QuestionTextPatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    replacements: list[QuestionTextReplacement] = Field(min_length=1, max_length=200)
