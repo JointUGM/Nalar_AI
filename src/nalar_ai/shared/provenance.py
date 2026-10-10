@@ -45,6 +45,11 @@ class UsageLedger:
         self.request_id = request_id
         self._max_cost_usd = max_cost_usd
         self._records: list[InvocationRecord] = []
+        self._invocation_limit: int | None = None
+        self._attempts = 0
+
+    def limit_invocations(self, maximum: int) -> None:
+        self._invocation_limit = maximum
 
     @property
     def records(self) -> tuple[InvocationRecord, ...]:
@@ -58,9 +63,12 @@ class UsageLedger:
         self._records.append(record)
 
     def ensure_budget(self) -> None:
+        if self._invocation_limit is not None and self._attempts >= self._invocation_limit:
+            raise BudgetExceededError("request invocation limit reached")
         spent = self.total_cost_usd
         if spent >= self._max_cost_usd:
             raise BudgetExceededError(
                 "request cost cap reached; refusing further model calls",
                 details={"spent_usd": round(spent, 6), "limit_usd": self._max_cost_usd},
             )
+        self._attempts += 1
