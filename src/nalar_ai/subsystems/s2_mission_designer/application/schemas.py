@@ -111,12 +111,41 @@ class CriticIssue(BaseModel):
     target: Literal["c1", "c2", "c3"] | None = None
     # Missing means blocking: only an explicit "minor" may survive the second pass.
     severity: Literal["blocking", "minor"] = "blocking"
+    category: Literal[
+        "answer_leak",
+        "scientific_error",
+        "target_mismatch",
+        "verdict",
+        "misconception_endorsement",
+        "revision_unfulfilled",
+        "style",
+        "unspecified",
+    ] = "unspecified"
     problem: Text
     quote: str = Field(min_length=1, max_length=500)
+
+    @property
+    def is_blocking(self) -> bool:
+        # Only explicitly identified style nits can be left to teacher review.
+        return self.severity == "blocking" or self.category != "style"
 
 
 class CriticDraft(BaseModel):
     issues: list[CriticIssue] = Field(max_length=20)
+
+
+class BankCriticIssue(CriticIssue):
+    component: Literal["bank"]
+
+
+class BankCoverage(BaseModel):
+    target: Literal["c1", "c2", "c3"]
+    question_ids: list[str] = Field(max_length=32)
+
+
+class BankCriticDraft(BaseModel):
+    issues: list[BankCriticIssue] = Field(max_length=20)
+    coverage: list[BankCoverage] | None = Field(default=None, min_length=2, max_length=3)
 
 
 class RevisionFeedback(BaseModel):

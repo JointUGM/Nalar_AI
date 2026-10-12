@@ -52,7 +52,9 @@ def bank() -> dict[str, Any]:
 
 
 def queue_mission(llm: Any, critic: dict[str, Any] | None = None) -> None:
-    llm.queue(*(json.dumps(x) for x in [core(), bank(), bank(), critic or {"issues": []}]))
+    llm.queue(
+        *(json.dumps(x) for x in [core(), {"issues": []}, bank(), bank(), critic or {"issues": []}])
+    )
 
 
 def test_generated_pack_is_compatible_with_s3_and_s4_and_has_link_provenance(client, llm):
@@ -67,13 +69,11 @@ def test_generated_pack_is_compatible_with_s3_and_s4_and_has_link_provenance(cli
     assert result["ungrounded_concept_ids"] == []
     assert "paragraphs" not in pack and "teacher_material" not in pack
     assert "Rahasia sumber" not in json.dumps(pack)
-    assert len(payload["invocations"]) == 4
-    assert all(
-        {r["id"] for r in i["retrieval"] if r["source"] == "material_chunk"} == {P1, P2}
-        for i in payload["invocations"]
-    )
+    assert len(payload["invocations"]) == 5
     for record in payload["invocations"]:
         concepts = {r["id"] for r in record["retrieval"] if r["source"] == "concept"}
+        sources = {r["id"] for r in record["retrieval"] if r["source"] == "material_chunk"}
+        assert sources == ({P1} if concepts == {C1} else {P2} if concepts == {C2} else {P1, P2})
         assert (
             concepts in ({C1}, {C2})
             if "generate_bank" in record["prompt_version"]
@@ -146,14 +146,24 @@ def test_critic_repairs_only_the_broken_bank_then_rechecks(client, llm):
             ]
         },
     )
-    llm.queue(json.dumps(bank()), '{"issues":[]}')
+    repaired = {
+        "replacements": [{"index": 0, "text": "Apa alasanmu tentang gerak bola di halaman?"}]
+    }
+    llm.queue(json.dumps(repaired), '{"issues":[]}')
     response = client.post("/v1/s2/missions/generate", json=mission_input(), headers=HEADERS)
     assert response.status_code == 200, response.text
-    assert len(response.json()["invocations"]) == 6
+    assert len(response.json()["invocations"]) == 7
     assert sum("generate_core" in i["prompt_version"] for i in response.json()["invocations"]) == 1
+    questions = response.json()["result"]["context_pack"]["question_bank"]
+    assert [q["text"] for q in questions[:16]] == [q["text"] for q in bank()["questions"]]
+    repaired_bank = [q["text"] for q in questions[16:]]
+    assert repaired_bank[0] == repaired["replacements"][0]["text"]
+    assert repaired_bank[1:] == [q["text"] for q in bank()["questions"]][1:]
+    repair_request = next(r for r in llm.requests if "specified rejected Socratic" in r.system)
+    assert "Pertanyaan terlalu rumit" in repair_request.blocks[-1].text
 
 
-def test_critic_rejection_after_repair_returns_no_package(client, llm):
+def test_critic_rejection_after_repair_returns_no_package(client, llm, caplog):
     issue = {
         "issues": [
             {
@@ -165,18 +175,33 @@ def test_critic_rejection_after_repair_returns_no_package(client, llm):
         ]
     }
     queue_mission(llm, issue)
-    llm.queue(json.dumps(bank()), json.dumps(issue))
+    repaired = {"replacements": [{"index": 0, "text": bank()["questions"][0]["text"]}]}
+    llm.queue(json.dumps(repaired), json.dumps(issue))
     response = client.post("/v1/s2/missions/generate", json=mission_input(), headers=HEADERS)
     assert response.status_code == 502
     assert "result" not in response.json()
-    assert len(response.json()["invocations"]) == 6
+    assert len(response.json()["invocations"]) == 7
+    diagnostic = next(
+        record.message for record in caplog.records if "stage=critic_after_repair" in record.message
+    )
+    assert "components=bank" in diagnostic
+    assert "blocking_issues=1" in diagnostic
+    assert response.json()["request_id"] in diagnostic
+    assert "s2.critic@v5" in diagnostic
+    assert issue["issues"][0]["problem"] not in diagnostic
+    assert issue["issues"][0]["quote"] not in diagnostic
 
 
 def test_invalid_bank_gets_one_fast_repair_without_weakening_the_guard(client, llm):
     rejected = bank()
     rejected["questions"][0]["text"] = "Mengapa jawabanmu benar?"
     replacement = {"replacements": [{"index": 0, "text": bank()["questions"][0]["text"]}]}
-    llm.queue(*(json.dumps(x) for x in [core(), rejected, replacement, bank(), {"issues": []}]))
+    llm.queue(
+        *(
+            json.dumps(x)
+            for x in [core(), {"issues": []}, rejected, replacement, bank(), {"issues": []}]
+        )
+    )
     response = client.post("/v1/s2/missions/generate", json=mission_input(), headers=HEADERS)
     assert response.status_code == 200, response.text
     records = response.json()["invocations"]
@@ -194,28 +219,30 @@ def test_sibling_bank_failures_settle_and_preserve_all_paid_attempts(client, llm
     rejected = bank()
     rejected["questions"][0]["text"] = "Mengapa jawabanmu benar?"
     # Per target: bank, narrow repair + retry, whole-bank repair + retry.
-    llm.queue(*(json.dumps(x) for x in [core(), *[rejected] * 10]))
+    llm.queue(*(json.dumps(x) for x in [core(), {"issues": []}, *[rejected] * 10]))
     response = client.post("/v1/s2/missions/generate", json=mission_input(), headers=HEADERS)
     assert response.status_code == 502
     assert response.json()["error"]["code"] == "ai_output_invalid"
-    assert len(response.json()["invocations"]) == 11
+    assert len(response.json()["invocations"]) == 12
 
 
-def test_rubric_only_critic_repair_preserves_the_accepted_banks(client, llm):
-    queue_mission(
-        llm,
-        {
-            "issues": [
-                {
-                    "component": "rubric",
-                    "target": None,
-                    "problem": "Perjelas deskriptor",
-                    "quote": "claim tingkat 0 pada bola",
-                }
-            ]
-        },
+def test_core_rubric_repair_happens_before_banks_are_generated(client, llm):
+    issue = {
+        "issues": [
+            {
+                "component": "rubric",
+                "target": None,
+                "problem": "Perjelas deskriptor",
+                "quote": "claim tingkat 0 pada bola",
+            }
+        ]
+    }
+    llm.queue(
+        *(
+            json.dumps(x)
+            for x in [core(), issue, core(), {"issues": []}, bank(), bank(), {"issues": []}]
+        )
     )
-    llm.queue(json.dumps(core()), '{"issues":[]}')
     response = client.post("/v1/s2/missions/generate", json=mission_input(), headers=HEADERS)
     assert response.status_code == 200, response.text
     records = response.json()["invocations"]
@@ -240,6 +267,147 @@ def test_bank_generation_receives_only_its_target_wrong_ideas(client, llm):
     assert len(bank_contexts) == 2
     assert "Pernyataan keliru unik 1" not in bank_contexts[0]
     assert "Pernyataan keliru unik 0" not in bank_contexts[1]
+    assert "Rahasia sumber kedua" not in bank_contexts[0]
+    assert "Rahasia sumber pertama" not in bank_contexts[1]
+    assert "reference_reasoning" not in bank_contexts[0]
+    assert '"objective"' not in bank_contexts[0]
+    assert '"anchor_problem"' not in bank_contexts[0]
+
+
+def test_anchor_presupposing_the_assessed_relationship_fails_closed(client, llm):
+    leaked = core()
+    leaked["anchor_problem"] = (
+        "Rani mengganti tempo bunyi. Mengapa perubahan tempo tidak mengubah waktu tempuh bunyi?"
+    )
+    llm.queue(*(json.dumps(leaked) for _ in range(3)))
+    response = client.post("/v1/s2/missions/generate", json=mission_input(), headers=HEADERS)
+    assert response.status_code == 502
+    assert len(response.json()["invocations"]) == 3
+    assert "answer_relationship" in response.json()["error"]["details"]["errors"][0]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Jika jarak tetap, mengapa kilatan selalu mendahului bunyi guntur?",
+        "Kilatan datang lebih awal dari suara. Apa hal paling sederhana yang membedakan keduanya?",
+        "Apa penyebab jeda kilatan dan guntur bertambah saat pengamat menjauh?",
+        "Penonton tribun belakang merasakan jeda lebih lama daripada penonton depan. Apa alasannya?",
+        "Teman jauh melihat kembang api sebelum mendengar ledakannya. Apa alasannya?",
+        "Bagaimana menjelaskan keterlambatan suara dibanding cahaya?",
+    ],
+)
+def test_explicit_light_sound_relationships_are_rejected_before_critic(client, llm, text):
+    leaked = core()
+    leaked["anchor_problem"] = text
+    llm.queue(*(json.dumps(leaked) for _ in range(3)))
+    response = client.post("/v1/s2/missions/generate", json=mission_input(), headers=HEADERS)
+    assert response.status_code == 502
+    assert len(response.json()["invocations"]) == 3
+
+
+def test_anchor_relationship_feedback_repairs_before_banks_are_written(client, llm):
+    leaked = core()
+    leaked["anchor_problem"] = (
+        "Rani mengganti tempo bunyi. Mengapa perubahan tempo tidak mengubah waktu tempuh bunyi?"
+    )
+    llm.queue(
+        *(json.dumps(x) for x in [leaked, core(), {"issues": []}, bank(), bank(), {"issues": []}])
+    )
+    response = client.post("/v1/s2/missions/generate", json=mission_input(), headers=HEADERS)
+    assert response.status_code == 200, response.text
+    assert "answer_relationship" in llm.requests[1].blocks[-1].text
+
+
+def test_core_audit_rejects_semantic_leaks_before_any_bank_spend(client, llm):
+    unsafe = core()
+    unsafe["anchor_problem"] = (
+        "Tali Rani bergerak. Waktu tempuhnya sama meski tangan dipercepat. Apa alasanmu?"
+    )
+    issue = {
+        "issues": [
+            {
+                "component": "anchor_problem",
+                "category": "answer_leak",
+                "severity": "minor",
+                "problem": "Hubungan diberikan",
+                "quote": "Waktu tempuhnya sama meski tangan dipercepat.",
+            }
+        ]
+    }
+    llm.queue(*(json.dumps(x) for x in [unsafe, issue, unsafe, issue]))
+    response = client.post("/v1/s2/missions/generate", json=mission_input(), headers=HEADERS)
+    assert response.status_code == 502
+    records = response.json()["invocations"]
+    assert len(records) == 4
+    assert not any("bank" in r["prompt_version"] for r in records)
+    assert "core_safety_feedback" in llm.requests[2].blocks[-1].text
+
+
+def test_core_audit_repairs_a_scene_then_audits_the_new_reference(client, llm):
+    unsafe = core()
+    unsafe["anchor_problem"] = (
+        "Tali Rani bergerak. Waktu tempuhnya sama meski tangan dipercepat. Apa alasanmu?"
+    )
+    issue = {
+        "issues": [
+            {
+                "component": "anchor_problem",
+                "category": "answer_leak",
+                "problem": "Hubungan diberikan",
+                "quote": "Waktu tempuhnya sama meski tangan dipercepat.",
+            }
+        ]
+    }
+    llm.queue(
+        *(
+            json.dumps(x)
+            for x in [unsafe, issue, core(), {"issues": []}, bank(), bank(), {"issues": []}]
+        )
+    )
+    response = client.post("/v1/s2/missions/generate", json=mission_input(), headers=HEADERS)
+    assert response.status_code == 200, response.text
+    assert len(response.json()["invocations"]) == 7
+
+
+def test_prediction_about_a_relationship_is_allowed(client, llm):
+    candidate = core()
+    candidate["anchor_problem"] = (
+        "Rani mengganti tempo bunyi. Apakah waktu tempuh tetap sama, dan apa alasanmu?"
+    )
+    llm.queue(*(json.dumps(x) for x in [candidate, {"issues": []}, bank(), bank(), {"issues": []}]))
+    response = client.post("/v1/s2/missions/generate", json=mission_input(), headers=HEADERS)
+    assert response.status_code == 200, response.text
+
+
+def test_shape_feedback_explains_trailing_instruction_in_anchor(client, llm):
+    malformed = core()
+    malformed["anchor_problem"] += " Jelaskan alasanmu."
+    llm.queue(
+        *(
+            json.dumps(x)
+            for x in [malformed, core(), {"issues": []}, bank(), bank(), {"issues": []}]
+        )
+    )
+    response = client.post("/v1/s2/missions/generate", json=mission_input(), headers=HEADERS)
+    assert response.status_code == 200, response.text
+    assert "the final character must be ?" in llm.requests[1].blocks[-1].text
+
+
+def test_presupposing_bank_question_is_repaired_at_its_exact_index(client, llm):
+    rejected = bank()
+    rejected["questions"][0]["text"] = "Mengapa perubahan tempo tidak mengubah waktu tempuh?"
+    replacement = {"replacements": [{"index": 0, "text": bank()["questions"][0]["text"]}]}
+    llm.queue(
+        *(
+            json.dumps(x)
+            for x in [core(), {"issues": []}, rejected, replacement, bank(), {"issues": []}]
+        )
+    )
+    response = client.post("/v1/s2/missions/generate", json=mission_input(), headers=HEADERS)
+    assert response.status_code == 200, response.text
+    repair = next(r for r in llm.requests if "specified rejected Socratic" in r.system)
+    assert "Replace ONLY indices [0]" in repair.blocks[-1].text
 
 
 @pytest.mark.parametrize("path", ["/v1/s2/targets/select", "/v1/s2/missions/generate"])
@@ -247,26 +415,126 @@ def test_s2_requires_the_service_key(client, path):
     assert client.post(path, json={}).status_code == 401
 
 
-def test_minor_critic_issues_after_repair_go_to_teacher_review(client, llm):
+def test_explicit_style_issues_go_to_teacher_review_without_regeneration(client, llm):
     # Live 2026-10-09 (jobs ea36201a, 2139127e): the second pass found only wording nits and
     # the job died; minor issues are left to the teacher's mandatory review.
     issue = {
         "issues": [
             {
-                "component": "rubric",
-                "target": None,
+                "component": "bank",
+                "target": "c1",
                 "severity": "minor",
+                "category": "style",
                 "problem": "Perjelas deskriptor",
-                "quote": "claim tingkat 0 pada bola",
+                "quote": bank()["questions"][0]["text"],
             }
         ]
     }
     queue_mission(llm, issue)
-    llm.queue(json.dumps(core()), json.dumps(issue))
+    llm.queue(json.dumps(core()), '{"issues":[]}', json.dumps(issue))
     response = client.post("/v1/s2/missions/generate", json=mission_input(), headers=HEADERS)
     assert response.status_code == 200, response.text
     records = response.json()["invocations"]
-    assert sum("critic" in i["prompt_version"] for i in records) == 2
+    assert sum("critic" in i["prompt_version"] for i in records) == 1
+    assert len(records) == 5
+
+
+@pytest.mark.parametrize(
+    "category", ["scientific_error", "answer_leak", "target_mismatch", "unspecified"]
+)
+def test_safety_category_is_blocking_even_when_critic_labels_it_minor(client, llm, category):
+    issue = {
+        "issues": [
+            {
+                "component": "bank",
+                "target": "c1",
+                "category": category,
+                "severity": "minor",
+                "problem": "Temuan substantif",
+                "quote": bank()["questions"][0]["text"],
+            }
+        ]
+    }
+    if category != "target_mismatch":
+        issue["coverage"] = [
+            {"target": "c1", "question_ids": ["q0"]},
+            {"target": "c2", "question_ids": ["q0"]},
+        ]
+    queue_mission(llm, issue)
+    llm.queue(
+        json.dumps({"replacements": [{"index": 0, "text": bank()["questions"][0]["text"]}]}),
+        json.dumps(issue),
+    )
+    response = client.post("/v1/s2/missions/generate", json=mission_input(), headers=HEADERS)
+    assert response.status_code == 502
+    assert len(response.json()["invocations"]) == 7
+
+
+def test_supporting_question_nit_does_not_erase_confirmed_bank_coverage(client, llm):
+    issue = {
+        "coverage": [
+            {"target": "c1", "question_ids": ["q1"]},
+            {"target": "c2", "question_ids": ["q0"]},
+        ],
+        "issues": [
+            {
+                "component": "bank",
+                "target": "c1",
+                "category": "target_mismatch",
+                "severity": "blocking",
+                "problem": "Pertanyaan pendukung",
+                "quote": bank()["questions"][0]["text"],
+            }
+        ],
+    }
+    queue_mission(llm, issue)
+    response = client.post("/v1/s2/missions/generate", json=mission_input(), headers=HEADERS)
+    assert response.status_code == 200, response.text
+    assert len(response.json()["invocations"]) == 5
+
+
+def test_fabricated_coverage_ids_fail_closed(client, llm):
+    issue = {
+        "coverage": [
+            {"target": "c1", "question_ids": ["invented"]},
+            {"target": "c2", "question_ids": ["q0"]},
+        ],
+        "issues": [],
+    }
+    queue_mission(llm, issue)
+    llm.queue(json.dumps(issue))
+    response = client.post("/v1/s2/missions/generate", json=mission_input(), headers=HEADERS)
+    assert response.status_code == 502
+    assert len(response.json()["invocations"]) == 6
+
+
+def test_anchor_repair_replaces_coupled_reference_and_rubric(client, llm):
+    issue = {
+        "issues": [
+            {
+                "component": "anchor_problem",
+                "problem": "Ubah situasi",
+                "quote": "Rani menggelindingkan bola di halaman.",
+            }
+        ]
+    }
+    fresh = core()
+    fresh["anchor_problem"] = (
+        "Rani mendorong kotak di lantai. Bagaimana kamu menjelaskan kejadian ini?"
+    )
+    fresh["reference_reasoning"] = "Gesekan dan inersia menjelaskan kejadian pada kotak."
+    fresh["rubric"]["claim"][0] = "Tidak memberi klaim tentang kotak."
+    llm.queue(
+        *(
+            json.dumps(x)
+            for x in [core(), issue, fresh, {"issues": []}, bank(), bank(), {"issues": []}]
+        )
+    )
+    response = client.post("/v1/s2/missions/generate", json=mission_input(), headers=HEADERS)
+    assert response.status_code == 200, response.text
+    result = response.json()["result"]
+    assert result["context_pack"]["reference_reasoning"] == fresh["reference_reasoning"]
+    assert result["rubric"] == fresh["rubric"]
 
 
 def test_critic_issue_without_severity_is_blocking(client, llm):
@@ -280,8 +548,7 @@ def test_critic_issue_without_severity_is_blocking(client, llm):
             }
         ]
     }
-    queue_mission(llm, issue)
-    llm.queue(json.dumps(core()), json.dumps(issue))
+    llm.queue(*(json.dumps(x) for x in [core(), issue, core(), issue]))
     response = client.post("/v1/s2/missions/generate", json=mission_input(), headers=HEADERS)
     assert response.status_code == 502
     assert response.json()["error"]["code"] == "ai_output_invalid"
@@ -299,12 +566,16 @@ def test_critic_target_on_a_non_bank_issue_is_ignored_not_fatal(client, llm):
             }
         ]
     }
-    queue_mission(llm, issue)
-    llm.queue(json.dumps(core()), '{"issues":[]}')
+    llm.queue(
+        *(
+            json.dumps(x)
+            for x in [core(), issue, core(), {"issues": []}, bank(), bank(), {"issues": []}]
+        )
+    )
     response = client.post("/v1/s2/missions/generate", json=mission_input(), headers=HEADERS)
     assert response.status_code == 200, response.text
     records = response.json()["invocations"]
-    assert sum("critic" in i["prompt_version"] for i in records) == 2
+    assert sum("audit_core" in i["prompt_version"] for i in records) == 2
     assert sum("generate_core" in i["prompt_version"] for i in records) == 2
 
 
@@ -312,8 +583,8 @@ def test_critic_fabricated_evidence_fails_closed_and_keeps_invocations(client, l
     issue = {
         "issues": [
             {
-                "component": "anchor_problem",
-                "target": None,
+                "component": "bank",
+                "target": "c1",
                 "problem": "Istilah bocor",
                 "quote": "inersia",
             }
@@ -323,7 +594,7 @@ def test_critic_fabricated_evidence_fails_closed_and_keeps_invocations(client, l
     llm.queue(json.dumps(issue))
     response = client.post("/v1/s2/missions/generate", json=mission_input(), headers=HEADERS)
     assert response.status_code == 502
-    assert len(response.json()["invocations"]) == 5
+    assert len(response.json()["invocations"]) == 6
     assert "result" not in response.json()
 
 
@@ -332,12 +603,15 @@ def test_narrow_repair_cannot_change_an_accepted_question(client, llm):
     rejected["questions"][0]["text"] = "Mengapa jawabanmu benar?"
     wrong = {"replacements": [{"index": 1, "text": bank()["questions"][0]["text"]}]}
     llm.queue(
-        *(json.dumps(x) for x in [core(), rejected, wrong, wrong, rejected, rejected, bank()])
+        *(
+            json.dumps(x)
+            for x in [core(), {"issues": []}, rejected, wrong, wrong, rejected, rejected, bank()]
+        )
     )
     response = client.post("/v1/s2/missions/generate", json=mission_input(), headers=HEADERS)
     assert response.status_code == 502
     assert response.json()["error"]["code"] == "ai_output_invalid"
-    assert len(response.json()["invocations"]) == 7
+    assert len(response.json()["invocations"]) == 8
     assert "result" not in response.json()
 
 
@@ -351,7 +625,9 @@ def test_narrow_repair_ignores_extra_indices_and_keeps_accepted_questions(client
             {"index": 5, "text": "Mengapa jawabanmu benar?"},
         ]
     }
-    llm.queue(*(json.dumps(x) for x in [core(), rejected, extra, bank(), {"issues": []}]))
+    llm.queue(
+        *(json.dumps(x) for x in [core(), {"issues": []}, rejected, extra, bank(), {"issues": []}])
+    )
     response = client.post("/v1/s2/missions/generate", json=mission_input(), headers=HEADERS)
     assert response.status_code == 200, response.text
     questions = response.json()["result"]["context_pack"]["question_bank"]
@@ -366,7 +642,16 @@ def test_failed_narrow_repair_falls_back_to_a_guarded_whole_bank_repair(client, 
     llm.queue(
         *(
             json.dumps(x)
-            for x in [core(), rejected, still_bad, still_bad, bank(), bank(), {"issues": []}]
+            for x in [
+                core(),
+                {"issues": []},
+                rejected,
+                still_bad,
+                still_bad,
+                bank(),
+                bank(),
+                {"issues": []},
+            ]
         )
     )
     response = client.post("/v1/s2/missions/generate", json=mission_input(), headers=HEADERS)

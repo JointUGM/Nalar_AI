@@ -1,5 +1,7 @@
 import asyncio
 import json
+import logging
+import re
 from collections import Counter
 from collections.abc import Sequence
 from dataclasses import replace
@@ -18,13 +20,15 @@ from nalar_ai.shared.context_pack import validate_pack
 from nalar_ai.shared.enums import ProbeStrategy, RetrievalPath, RetrievalSource
 from nalar_ai.shared.errors import InvalidInputError, OutputValidationError
 from nalar_ai.shared.provenance import RetrievalRef, UsageLedger
-from nalar_ai.shared.question_guard import GuardLexicon, check_text
+from nalar_ai.shared.question_guard import GuardLexicon, check_text, count_sentences
 from nalar_ai.shared.text import contains_phrase, fence_untrusted, normalize_key, stem_spans
 from nalar_ai.subsystems.s2_mission_designer.application.policy import DesignerPolicy
 from nalar_ai.subsystems.s2_mission_designer.application.schemas import (
+    BankCriticDraft,
     BankDraft,
     CoreDraft,
     CriticDraft,
+    CriticIssue,
     GenerateMissionIn,
     GenerateMissionOut,
     QuestionRepairs,
@@ -36,6 +40,8 @@ from nalar_ai.subsystems.s2_mission_designer.domain.grounding import (
     SourceParagraph,
     select_paragraphs,
 )
+
+logger = logging.getLogger("nalar_ai.s2")
 
 
 def _data(tag: str, value: object) -> str:
@@ -227,24 +233,96 @@ class DesignMissionUseCase:
             return problems
 
         async def core_call(feedback: str) -> CoreDraft:
-            return await self._llm.generate(
-                prompt_id="s2.revise_core" if revision is not None else "s2.generate_core",
-                variables={"context": _data("teacher_context", context), "feedback": feedback},
-                output_model=CoreDraft,
-                ledger=ledger,
-                retrieval=retrieval,
-                semantic_check=revision_core_problems,
-                # Live 2026-10-09: about half of anchors use an ordinary blocked word ("tepat
-                # di", "hampir sama"); one named-word repair still failed 1 in 8, so allow two.
-                policy=replace(self._module.generation_policy, max_repairs=2),
-            )
+            for safety_attempt in range(self._module.generation_policy.max_repairs + 1):
+                candidate = await write_core(feedback)
+
+                def audit_check(out: CriticDraft, candidate: CoreDraft = candidate) -> list[str]:
+                    problems: list[str] = []
+                    for issue in out.issues:
+                        if issue.category == "style":
+                            problems.append("core safety audit must omit style findings")
+                        if issue.component == "bank":
+                            problems.append("core audit cannot report a bank issue")
+                            continue
+                        texts = (
+                            [s for levels in candidate.rubric.model_dump().values() for s in levels]
+                            if issue.component == "rubric"
+                            else [getattr(candidate, issue.component)]
+                        )
+                        if not any(issue.quote in text for text in texts):
+                            problems.append(f"quote must occur verbatim in {issue.component}")
+                    return problems
+
+                audit = await self._llm.generate(
+                    prompt_id="s2.audit_core",
+                    variables={
+                        "context": _data("teacher_context", context),
+                        "draft": _data("core", candidate.model_dump()),
+                    },
+                    output_model=CriticDraft,
+                    ledger=ledger,
+                    retrieval=retrieval,
+                    semantic_check=audit_check,
+                    policy=self._module.critic_policy,
+                )
+                blocking = [i for i in audit.issues if i.is_blocking]
+                if not blocking:
+                    return candidate
+                if safety_attempt == self._module.generation_policy.max_repairs:
+                    logger.warning(
+                        "mission rejected stage=core_safety request_id=%s blocking_issues=%d invocations=%d",
+                        ledger.request_id,
+                        len(blocking),
+                        len(ledger.records),
+                    )
+                    raise OutputValidationError(
+                        "mission core failed safety audit",
+                        details={"components": [i.component for i in blocking]},
+                    )
+                feedback += "\n" + _data("core_safety_feedback", [i.model_dump() for i in blocking])
+            raise AssertionError("bounded core audit did not return")
+
+        async def write_core(feedback: str) -> CoreDraft:
+            for attempt in range(self._module.core_format_repairs + 1):
+                try:
+                    return await self._llm.generate(
+                        prompt_id="s2.revise_core" if revision is not None else "s2.generate_core",
+                        variables={
+                            "context": _data("teacher_context", context),
+                            "feedback": feedback,
+                        },
+                        output_model=CoreDraft,
+                        ledger=ledger,
+                        retrieval=retrieval,
+                        semantic_check=revision_core_problems,
+                        policy=replace(self._module.generation_policy, max_repairs=0),
+                    )
+                except OutputValidationError as error:
+                    if attempt == self._module.core_format_repairs:
+                        raise
+                    # Accumulate every failed constraint without echoing the rejected draft:
+                    # Qwen otherwise copies it and alternates between earlier banned terms.
+                    feedback += "\n" + _data("core_validation_feedback", error.details)
+            raise AssertionError("bounded core formatting did not return")
 
         core = await core_call("(none)")
 
-        async def bank_call(alias: str, feedback: str) -> BankDraft:
-            bank_retrieval = refs([alias])
+        async def bank_call(
+            alias: str,
+            feedback: str,
+            previous: BankDraft | None = None,
+            critic_indices: set[int] | None = None,
+        ) -> BankDraft:
+            linked_ids = set(links[targets[alias].id])
+            bank_retrieval = tuple(
+                r
+                for r in refs([alias])
+                if r.source != RetrievalSource.MATERIAL_CHUNK or r.id in linked_ids
+            )
             bank_context: dict[str, Any] = {
-                **context,
+                "teacher_material": [
+                    p for p in context["teacher_material"] if UUID(p["id"]) in linked_ids
+                ],
                 "targets": [
                     {
                         "id": alias,
@@ -263,8 +341,6 @@ class DesignMissionUseCase:
                     if m.concept_id == targets[alias].id
                 ],
                 "target": alias,
-                "anchor_problem": core.anchor_problem,
-                "reference_reasoning": core.reference_reasoning,
                 "answer_terms": _terms(body, core),
                 "forbidden_verdict_words": list(self._module.question_guard.verdict_terms),
             }
@@ -275,13 +351,17 @@ class DesignMissionUseCase:
                 bank_context["revision"] = revision
             variables = {"context": _data("teacher_context", bank_context), "feedback": feedback}
             try:
-                draft = await self._llm.generate(
-                    prompt_id="s2.revise_bank" if revision is not None else "s2.generate_bank",
-                    variables=variables,
-                    output_model=BankDraft,
-                    ledger=ledger,
-                    retrieval=bank_retrieval,
-                    policy=policy,
+                draft = (
+                    previous
+                    if previous is not None
+                    else await self._llm.generate(
+                        prompt_id="s2.revise_bank" if revision is not None else "s2.generate_bank",
+                        variables=variables,
+                        output_model=BankDraft,
+                        ledger=ledger,
+                        retrieval=bank_retrieval,
+                        policy=policy,
+                    )
                 )
             except OutputValidationError:
                 repair_feedback = (
@@ -289,10 +369,18 @@ class DesignMissionUseCase:
                 )
             else:
                 problems = self._bank_problems(draft, _terms(body, core))
+                problems += [
+                    f"questions.{i}: repair the quoted critic defect"
+                    for i in sorted(critic_indices or ())
+                ]
                 if not problems:
                     return draft
                 repair_feedback = (
-                    _data("previous_bank", draft.model_dump()) + "\n" + "\n".join(problems)
+                    feedback
+                    + "\n"
+                    + _data("previous_bank", draft.model_dump())
+                    + "\n"
+                    + "\n".join(problems)
                 )
                 if all(p.startswith("questions.") for p in problems):
                     indices = {
@@ -301,7 +389,8 @@ class DesignMissionUseCase:
                         if check_text(
                             q.text, "", (), _terms(body, core), self._module.question_guard
                         )
-                    }
+                        or self._relationship_problems(f"questions.{i}", q.text)
+                    } | (critic_indices or set())
 
                     def repaired_bank(out: QuestionRepairs) -> BankDraft:
                         questions = list(draft.questions)
@@ -347,24 +436,61 @@ class DesignMissionUseCase:
                 semantic_check=lambda b: self._bank_problems(b, _terms(body, core)),
             )
 
-        async def banks_for(aliases: Sequence[str], feedback: str) -> dict[str, BankDraft]:
+        async def banks_for(
+            aliases: Sequence[str],
+            feedback: str,
+            issues: Sequence[CriticIssue] = (),
+        ) -> dict[str, BankDraft]:
             # Let every started call settle: sibling failures must not lose paid invocations.
             results = await asyncio.gather(
-                *(bank_call(a, feedback) for a in aliases),
+                *(
+                    bank_call(
+                        a,
+                        feedback,
+                        banks[a] if issues else None,
+                        {
+                            i
+                            for issue in issues
+                            if issue.component == "bank" and issue.target == a
+                            for i, q in enumerate(banks[a].questions)
+                            if issue.quote in q.text
+                        }
+                        if issues
+                        else None,
+                    )
+                    for a in aliases
+                ),
                 return_exceptions=True,
             )
-            banks: dict[str, BankDraft] = {}
+            generated_banks: dict[str, BankDraft] = {}
             for alias, result in zip(aliases, results, strict=True):
                 if isinstance(result, BaseException):
                     raise result
-                banks[alias] = result
-            return banks
+                generated_banks[alias] = result
+            return generated_banks
 
         banks = await banks_for(list(targets), "(none)")
         for attempt in range(2):
 
-            def critic_check(out: CriticDraft, core: CoreDraft = core) -> list[str]:
+            def critic_check(
+                out: CriticDraft | BankCriticDraft, core: CoreDraft = core
+            ) -> list[str]:
                 problems: list[str] = []
+                if isinstance(out, BankCriticDraft) and out.coverage is not None:
+                    if {c.target for c in out.coverage} != set(banks) or len(out.coverage) != len(
+                        banks
+                    ):
+                        problems.append("coverage must include each bank target exactly once")
+                    for coverage in out.coverage:
+                        allowed = (
+                            {f"q{i}" for i in range(len(banks[coverage.target].questions))}
+                            if coverage.target in banks
+                            else set()
+                        )
+                        if not set(coverage.question_ids) <= allowed or len(
+                            set(coverage.question_ids)
+                        ) != len(coverage.question_ids):
+                            problems.append("coverage question_ids must be unique supplied IDs")
                 for issue in out.issues:
                     if issue.component == "bank":
                         if issue.target not in banks:
@@ -380,7 +506,7 @@ class DesignMissionUseCase:
                         problems.append(f"quote must occur verbatim in {issue.component}")
                 return problems
 
-            critic = await self._llm.generate(
+            critic: CriticDraft | BankCriticDraft = await self._llm.generate(
                 prompt_id="s2.revision_critic" if revision is not None else "s2.critic",
                 variables={
                     "context": _data("teacher_context", context),
@@ -389,7 +515,15 @@ class DesignMissionUseCase:
                         {
                             "student_visible": {
                                 "anchor_problem": core.anchor_problem,
-                                "banks": {a: b.model_dump() for a, b in banks.items()},
+                                "banks": {
+                                    a: {
+                                        "questions": [
+                                            {"id": f"q{i}", **q.model_dump()}
+                                            for i, q in enumerate(b.questions)
+                                        ]
+                                    }
+                                    for a, b in banks.items()
+                                },
                             },
                             "hidden_teacher_reference": {
                                 "reference_reasoning": core.reference_reasoning,
@@ -399,38 +533,62 @@ class DesignMissionUseCase:
                         },
                     ),
                 },
-                output_model=CriticDraft,
+                output_model=CriticDraft if revision is not None else BankCriticDraft,
                 ledger=ledger,
                 retrieval=retrieval,
                 semantic_check=critic_check,
                 policy=self._module.critic_policy,
             )
-            if not critic.issues:
+            covered = (
+                {c.target for c in critic.coverage if c.question_ids}
+                if isinstance(critic, BankCriticDraft) and critic.coverage is not None
+                else set()
+            )
+            blocking = [
+                i
+                for i in critic.issues
+                if i.is_blocking
+                and not (
+                    isinstance(critic, BankCriticDraft)
+                    and i.category == "target_mismatch"
+                    and i.target in covered
+                )
+            ]
+            if not blocking:
                 break
             if attempt == 1:
-                blocking = [i for i in critic.issues if i.severity == "blocking"]
-                if not blocking:
-                    # Wording nits after a repair go to the teacher's mandatory review; the
-                    # deterministic leak and verdict guards have already passed.
-                    break
+                # Only validated enums and metadata: critic prose/quotes can contain material.
+                logger.warning(
+                    "mission rejected stage=critic_after_repair request_id=%s "
+                    "prompt=%s components=%s blocking_issues=%d invocations=%d",
+                    ledger.request_id,
+                    ledger.records[-1].prompt_version,
+                    ",".join(sorted({i.component for i in blocking})),
+                    len(blocking),
+                    len(ledger.records),
+                )
                 raise OutputValidationError(
                     "mission critic rejected the repaired draft",
                     details={"components": [i.component for i in blocking]},
                 )
-            feedback = _data("critic_feedback", [i.model_dump() for i in critic.issues])
-            parts = {i.component for i in critic.issues if i.component != "bank"}
+            feedback = _data("critic_feedback", [i.model_dump() for i in blocking])
+            parts = {i.component for i in blocking if i.component != "bank"}
             if parts:
                 fresh = await core_call(feedback)
                 # Preserve accepted fields and regenerate banks only when their inputs change.
-                core = core.model_copy(
-                    update={
-                        **{p: getattr(fresh, p) for p in parts},
-                        "answer_terms": list(
-                            dict.fromkeys([*core.answer_terms, *fresh.answer_terms])
-                        )[:40]
-                        if "reference_reasoning" in parts
-                        else core.answer_terms,
-                    }
+                core = (
+                    fresh
+                    if "anchor_problem" in parts
+                    else core.model_copy(
+                        update={
+                            **{p: getattr(fresh, p) for p in parts},
+                            "answer_terms": list(
+                                dict.fromkeys([*core.answer_terms, *fresh.answer_terms])
+                            )[:40]
+                            if "reference_reasoning" in parts
+                            else core.answer_terms,
+                        }
+                    )
                 )
                 problems = revision_core_problems(core)
                 if problems:
@@ -442,13 +600,17 @@ class DesignMissionUseCase:
                 if parts & {"anchor_problem", "reference_reasoning"}
                 else list(
                     dict.fromkeys(
-                        i.target
-                        for i in critic.issues
-                        if i.component == "bank" and i.target is not None
+                        i.target for i in blocking if i.component == "bank" and i.target is not None
                     )
                 )
             )
-            banks.update(await banks_for(redo, feedback))
+            banks.update(
+                await banks_for(
+                    redo,
+                    feedback,
+                    () if parts & {"anchor_problem", "reference_reasoning"} else blocking,
+                )
+            )
         questions = [
             BankQuestionIn(
                 id=f"{alias}-{q.move.value}-{i}",
@@ -501,7 +663,15 @@ class DesignMissionUseCase:
     def _core_problems(self, body: GenerateMissionIn, core: CoreDraft) -> list[str]:
         return _guard_problems(
             "anchor_problem", core.anchor_problem, _terms(body, core), self._module.anchor_guard
-        )
+        ) + self._relationship_problems("anchor_problem", core.anchor_problem)
+
+    def _relationship_problems(self, path: str, text: str) -> list[str]:
+        return [
+            f"{path}: answer_relationship: remove the asserted result and ask for a prediction instead "
+            + _data("asserted_relationship", match.group(0))
+            for pattern in self._module.answer_relationship_patterns
+            if (match := re.search(pattern, text, re.IGNORECASE)) is not None
+        ]
 
     def _bank_problems(self, bank: BankDraft, terms: list[str]) -> list[str]:
         counts = Counter(q.move for q in bank.questions)
@@ -516,6 +686,7 @@ class DesignMissionUseCase:
             problems += _guard_problems(
                 f"questions.{i}", q.text, terms, self._module.question_guard
             )
+            problems += self._relationship_problems(f"questions.{i}", q.text)
         return problems
 
 
@@ -526,10 +697,20 @@ def _guard_problems(path: str, text: str, terms: list[str], lexicon: GuardLexico
     if not blocked:
         return []
     key = normalize_key(text)
+    shape = []
+    if not text.strip().endswith("?"):
+        shape.append(
+            f"{path}: the final character must be ?; move any explanation request into that final question, with no instruction afterward"
+        )
+    if len(text.strip()) > lexicon.max_chars:
+        shape.append(f"{path}: shorten to at most {lexicon.max_chars} characters")
+    if count_sentences(text) > lexicon.max_sentences:
+        shape.append(f"{path}: shorten to at most {lexicon.max_sentences} sentences")
     verdicts = [w for w in lexicon.verdict_terms if contains_phrase(key, w)]
     hidden = [t for t in terms if stem_spans(key, normalize_key(t))]
     return [
         f"{path}: {blocked.value}",
+        *shape,
         *(
             [f"{path}: omit these verdict words entirely: {', '.join(verdicts)}"]
             if verdicts

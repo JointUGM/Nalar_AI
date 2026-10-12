@@ -258,7 +258,7 @@ class ReviseMissionUseCase:
             )
             if not critic.issues:
                 return result
-            blocking = [i for i in critic.issues if i.severity == "blocking"]
+            blocking = [i for i in critic.issues if i.is_blocking]
             if any(i.component not in scope for i in blocking):
                 raise OutputValidationError(
                     "REVISION_SCOPE_CONFLICT",
