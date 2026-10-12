@@ -27,3 +27,12 @@ question_max_chars: 500
 question_max_sentences: 3
 anchor_max_chars: 4000
 anchor_max_sentences: 10
+core_format_repairs: 2
+answer_relationship_patterns:
+  - '\bmengapa\b[^?!.]*(?:tidak (?:mengubah|berubah|memengaruhi)|tetap (?:sama|konstan))'
+  - '\b(?:kilat(?:an)?|cahaya|mata|sinyal visual)\b[^?!.]*(?:lebih (?:dulu|awal|cepat)|sebelum|mendahului|lalu)[^?!.]*\b(?:bunyi|suara|guntur|telinga|sinyal audio)\b'
+  - '\b(?:bunyi|suara|guntur|telinga|sinyal audio)\b[^?!.]*(?:sesudah|setelah|lebih lambat)[^?!.]*\b(?:kilat(?:an)?|cahaya|mata|sinyal visual)\b'
+  - '\b(?:jeda|selisih waktu|selang waktu)\b[^?!.]*(?:memanjang|bertambah|lebih (?:panjang|lama))[^?!.]*(?:menjauh|lebih jauh)'
+  - '\b(?:jauh|belakang)\b[^?!.]*\bjeda\b[^?!.]*\blebih (?:lama|panjang)\b'
+  - '\b(?:kilat(?:an)?|cahaya|kembang api)\b[^?!.]*\bsebelum\b[^?!.]*(?:mendengar|ledakan)'
+  - '\bketerlambatan (?:suara|bunyi)\b[^?!.]*\bcahaya\b'

@@ -37,4 +37,6 @@ def build_s2_module(settings: Settings) -> S2Module:
             max_chars=config.anchor_max_chars,
             max_sentences=config.anchor_max_sentences,
         ),
+        answer_relationship_patterns=tuple(config.answer_relationship_patterns),
+        core_format_repairs=config.core_format_repairs,
     )

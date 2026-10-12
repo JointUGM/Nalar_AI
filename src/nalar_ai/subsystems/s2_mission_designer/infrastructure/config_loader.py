@@ -10,6 +10,8 @@ class DesignerConfig(BaseModel):
     question_max_sentences: int = Field(ge=1)
     anchor_max_chars: int = Field(ge=1, le=4000)
     anchor_max_sentences: int = Field(ge=1)
+    core_format_repairs: int = Field(ge=0, le=3)
+    answer_relationship_patterns: list[str] = Field(default_factory=list)
 
 
 def load_config(path: Path) -> DesignerConfig:

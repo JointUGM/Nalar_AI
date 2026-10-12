@@ -12,3 +12,5 @@ class DesignerPolicy:
     per_target: int
     question_guard: GuardLexicon
     anchor_guard: GuardLexicon
+    core_format_repairs: int
+    answer_relationship_patterns: tuple[str, ...] = ()
