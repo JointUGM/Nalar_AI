@@ -15,8 +15,7 @@
           "probe_plan",
           "session_evaluation",
           "reflection_generation",
-          "class_map_insight",
-          "parent_summary"
+          "class_map_insight"
         ],
         "title": "AiPurpose",
         "type": "string"
@@ -1831,34 +1830,6 @@
         "title": "Envelope[NextTurnOut]",
         "type": "object"
       },
-      "Envelope_ParentSummaryOut_": {
-        "properties": {
-          "invocations": {
-            "items": {
-              "$ref": "#/components/schemas/InvocationOut"
-            },
-            "title": "Invocations",
-            "type": "array"
-          },
-          "result": {
-            "$ref": "#/components/schemas/ParentSummaryOut"
-          },
-          "warnings": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Warnings",
-            "type": "array"
-          }
-        },
-        "required": [
-          "result",
-          "invocations",
-          "warnings"
-        ],
-        "title": "Envelope[ParentSummaryOut]",
-        "type": "object"
-      },
       "Envelope_ReviseMissionOut_": {
         "properties": {
           "invocations": {
@@ -3239,107 +3210,6 @@
           "coverage"
         ],
         "title": "NextTurnOut",
-        "type": "object"
-      },
-      "ParentConceptIn": {
-        "properties": {
-          "misconception_statement": {
-            "anyOf": [
-              {
-                "maxLength": 1000,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "The held idea, or the idea the child moved away from when resolved",
-            "title": "Misconception Statement"
-          },
-          "name": {
-            "maxLength": 300,
-            "minLength": 1,
-            "title": "Name",
-            "type": "string"
-          },
-          "outcome": {
-            "$ref": "#/components/schemas/ConceptOutcome",
-            "description": "session_concept_results.outcome"
-          },
-          "resolved_in_session": {
-            "default": false,
-            "title": "Resolved In Session",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "name",
-          "outcome"
-        ],
-        "title": "ParentConceptIn",
-        "type": "object"
-      },
-      "ParentSummaryIn": {
-        "description": "One student's latest completed, evaluated attempt. No scores, flags, names or ids.",
-        "properties": {
-          "concepts": {
-            "items": {
-              "$ref": "#/components/schemas/ParentConceptIn"
-            },
-            "maxItems": 10,
-            "minItems": 1,
-            "title": "Concepts",
-            "type": "array"
-          },
-          "evaluation_summary": {
-            "anyOf": [
-              {
-                "maxLength": 2000,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "session_evaluations.summary",
-            "title": "Evaluation Summary"
-          },
-          "mission_title": {
-            "maxLength": 300,
-            "minLength": 1,
-            "title": "Mission Title",
-            "type": "string"
-          }
-        },
-        "required": [
-          "mission_title",
-          "concepts"
-        ],
-        "title": "ParentSummaryIn",
-        "type": "object"
-      },
-      "ParentSummaryOut": {
-        "properties": {
-          "content": {
-            "description": "parent_summaries.content",
-            "title": "Content",
-            "type": "string"
-          },
-          "source": {
-            "description": "Not stored; 'template' after two blocked drafts (store ai_invocation_id null)",
-            "enum": [
-              "model",
-              "template"
-            ],
-            "title": "Source",
-            "type": "string"
-          }
-        },
-        "required": [
-          "content",
-          "source"
-        ],
-        "title": "ParentSummaryOut",
         "type": "object"
       },
       "PlannerMode": {
@@ -5770,116 +5640,6 @@
           }
         },
         "summary": "Class Insight",
-        "tags": [
-          "s5"
-        ]
-      }
-    },
-    "/v1/s5/parent-summaries/generate": {
-      "post": {
-        "description": "Write one parent summary (TC-18, PA-1).\n\nCall once per eligible student; store the first success and never regenerate after release\n(AI-5). A provider outage is a 503, never a template.",
-        "operationId": "generate_parent_summary_v1_s5_parent_summaries_generate_post",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "x-service-key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Service-Key"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ParentSummaryIn"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Envelope_ParentSummaryOut_"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "unauthorized: missing or invalid X-Service-Key"
-          },
-          "413": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "payload_too_large"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "invalid_input, document_unreadable, section_too_large or budget_exceeded"
-          },
-          "500": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "internal_error"
-          },
-          "502": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "ai_output_invalid or model_call_rejected"
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "upstream_unavailable"
-          }
-        },
-        "summary": "Generate Parent Summary",
         "tags": [
           "s5"
         ]

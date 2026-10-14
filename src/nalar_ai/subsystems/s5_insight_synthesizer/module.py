@@ -24,7 +24,6 @@ def build_s5_module(settings: Settings) -> S5Module:
         config=load_synthesizer_config(),
         policy=SynthesizerPolicy(
             insight_timeout_s=settings.s5_insight_timeout_seconds,
-            summary_timeout_s=settings.s5_summary_timeout_seconds,
             max_attempts=settings.s5_max_attempts,
         ),
     )
