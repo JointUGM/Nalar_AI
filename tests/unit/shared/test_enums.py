@@ -41,6 +41,7 @@ def test_ai_purposes_exist_in_the_schema_and_migrations_002_and_003() -> None:
         "session_evaluation",
         "reflection_generation",
         "class_map_insight",
+        "teaching_plan",
     }
 
 

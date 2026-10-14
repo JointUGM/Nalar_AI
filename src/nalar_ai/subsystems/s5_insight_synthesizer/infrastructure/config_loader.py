@@ -7,6 +7,7 @@ from nalar_ai.shared.errors import ConfigurationError
 from nalar_ai.subsystems.s5_insight_synthesizer.domain.config import SynthesizerConfig
 from nalar_ai.subsystems.s5_insight_synthesizer.domain.insight import InsightLimits
 from nalar_ai.subsystems.s5_insight_synthesizer.domain.numbers import NumberLexicon
+from nalar_ai.subsystems.s5_insight_synthesizer.domain.teaching_plan import PlanLimits
 
 DEFAULT_CONFIG_PATH = Path(__file__).resolve().parents[1] / "config" / "synthesizer.yaml"
 
@@ -18,10 +19,12 @@ def load_synthesizer_config(path: Path = DEFAULT_CONFIG_PATH) -> SynthesizerConf
     )
     try:
         insight = InsightLimits(**raw["insight"])
+        teaching_plan = PlanLimits(**raw["teaching_plan"])
     except (TypeError, ValueError) as error:
-        raise ConfigurationError(f"invalid S5 insight limits: {error}") from error
+        raise ConfigurationError(f"invalid S5 limits: {error}") from error
     return SynthesizerConfig(
         version=int(raw["version"]),
         numbers=numbers,
         insight=insight,
+        teaching_plan=teaching_plan,
     )

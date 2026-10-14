@@ -372,3 +372,16 @@ def test_default_settings_turn_thinking_off_for_the_qwen_judge() -> None:
     # qwen refuses a forced tool call while thinking (DECISIONS M1).
     params = Settings.model_fields["llm_model_params"].default
     assert params["qwen3.8-max"] == {"enable_thinking": False}
+
+
+def test_normalize_recovers_fields_spilled_into_an_array_string() -> None:
+    # Qwen via SumoPod (2026-10-14): the array string carries the object's remaining fields.
+    spilled = '\n[{"name": "a", "note": null}], "label": "L", "extra": "x"}\n'
+    value = {"items": spilled, "extra": None}
+    assert normalize_arguments(value, NESTED_SCHEMA) == {
+        "items": [{"name": "a", "note": None}],
+        "extra": "x",
+        "label": "L",
+    }
+    unknown = '[{"name": "a"}], "secret": 1}'
+    assert normalize_arguments({"items": unknown}, NESTED_SCHEMA)["items"] == unknown

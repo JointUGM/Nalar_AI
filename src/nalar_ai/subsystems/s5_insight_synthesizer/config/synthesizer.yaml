@@ -1,6 +1,6 @@
 # S5 teacher class-insight guards (design doc §6). Owned by the pedagogy lead.
 # Bump `version` on every change.
-version: 4
+version: 5
 
 # AI-4: the insight never states a count. Whole-word match after normalize_key
 # ("rata-rata" becomes "rata rata"). Provided names and statements are exempt.
@@ -61,3 +61,10 @@ insight:
   max_suggestions: 3
   suggestion_max_words: 60
   suggestion_max_chars: 600
+
+# TC-23 next-lesson teaching plan: digits are allowed (science quantities), count claims are not.
+teaching_plan:
+  objective_max_words: 30
+  action_max_words: 60
+  question_max_words: 40
+  look_for_max_words: 50

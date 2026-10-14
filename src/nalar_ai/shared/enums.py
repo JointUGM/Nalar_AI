@@ -28,6 +28,7 @@ class AiPurpose(StrEnum):
     SESSION_EVALUATION = "session_evaluation"  # base schema label
     REFLECTION_GENERATION = "reflection_generation"  # base schema label
     CLASS_MAP_INSIGHT = "class_map_insight"  # base schema label
+    TEACHING_PLAN = "teaching_plan"  # backend migration adds the label (TC-23)
 
 
 class EvalPurpose(StrEnum):

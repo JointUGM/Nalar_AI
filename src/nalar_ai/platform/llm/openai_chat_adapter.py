@@ -124,7 +124,10 @@ def normalize_arguments(value: Any, schema: dict[str, Any]) -> Any:
     - the whole answer nested under one unknown key such as "$PARAMETER_NAME": unwrapped;
     - an array or object field sent as a JSON string: decoded;
     - an array nested under a redundant copy of its own field name: unwrapped;
-    - a required-but-nullable field left out: filled with null.
+    - a required-but-nullable field left out: filled with null;
+    - an array or object string that also carries the object's remaining fields
+      ("steps": "[...], \"look_for\": \"...\"}", Qwen): the fields are recovered when all
+      of them are known properties.
 
     Anything else is left as it is, so validation still rejects it.
     """
@@ -149,6 +152,7 @@ def _normalize(value: Any, schema: dict[str, Any], root: dict[str, Any]) -> Any:
             value = decoded
     if isinstance(value, dict):
         properties = schema.get("properties", {})
+        value = _recover_spilled_fields(value, properties)
         for name in schema.get("required", ()):
             if name not in value and _allows_null(properties.get(name, {})):
                 value[name] = None
@@ -175,6 +179,24 @@ def _normalize(value: Any, schema: dict[str, Any], root: dict[str, Any]) -> Any:
     for branch in schema.get("anyOf", ()):
         if branch.get("type") != "null":
             value = _normalize(value, branch, root)
+    return value
+
+
+def _recover_spilled_fields(value: dict[str, Any], properties: dict[str, Any]) -> dict[str, Any]:
+    for name, field in value.items():
+        if not isinstance(field, str) or properties.get(name, {}).get("type") not in _JSON_KINDS:
+            continue
+        try:
+            json.loads(field)
+            continue  # a plain JSON string; decoded by the usual path
+        except ValueError:
+            pass
+        try:
+            recovered = json.loads(f"{{{json.dumps(name)}: {field.strip()}")
+        except ValueError:
+            continue
+        if isinstance(recovered, dict) and set(recovered) <= set(properties):
+            return {**value, **recovered}  # the spilled copy is the model's full answer
     return value
 
 

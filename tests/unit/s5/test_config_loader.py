@@ -11,7 +11,8 @@ from nalar_ai.subsystems.s5_insight_synthesizer.infrastructure.config_loader imp
 
 def test_the_shipped_config_loads() -> None:
     config = load_synthesizer_config()
-    assert config.version == 4
+    assert config.version == 5
+    assert config.teaching_plan.objective_max_words == 30
     assert "satu" in config.numbers.number_words
     assert "sebagian besar" in config.numbers.count_claims
     assert config.insight.max_clusters == 6
@@ -42,5 +43,5 @@ def test_invalid_suggestion_limits_reject_configuration(
     raw["insight"][field] = yaml.safe_load(value)
     path = tmp_path / "synthesizer.yaml"
     path.write_text(yaml.safe_dump(raw), encoding="utf-8")
-    with pytest.raises(ConfigurationError, match="invalid S5 insight limits"):
+    with pytest.raises(ConfigurationError, match="invalid S5 limits"):
         load_synthesizer_config(path)

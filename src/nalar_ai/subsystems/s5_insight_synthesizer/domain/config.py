@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 from nalar_ai.subsystems.s5_insight_synthesizer.domain.insight import InsightLimits
 from nalar_ai.subsystems.s5_insight_synthesizer.domain.numbers import NumberLexicon
+from nalar_ai.subsystems.s5_insight_synthesizer.domain.teaching_plan import PlanLimits
 
 
 @dataclass(frozen=True, slots=True)
@@ -11,3 +12,4 @@ class SynthesizerConfig:
     version: int
     numbers: NumberLexicon
     insight: InsightLimits
+    teaching_plan: PlanLimits
