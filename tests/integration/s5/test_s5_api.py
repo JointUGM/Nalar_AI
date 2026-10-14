@@ -3,7 +3,6 @@ from typing import Any
 from fastapi.testclient import TestClient
 
 from nalar_ai.platform.llm.fakes import ScriptedLLM
-from nalar_ai.platform.llm.ports import TransientLLMError
 from tests.support.auth import AUTH
 from tests.support.s5 import (
     C_GESEK,
@@ -11,13 +10,10 @@ from tests.support.s5 import (
     M_BERAT,
     M_DIAM,
     M_HABIS,
-    SUMMARY,
     insight_reply,
-    summary_reply,
 )
 
 INSIGHT_URL = "/v1/s5/class-insight"
-SUMMARY_URL = "/v1/s5/parent-summaries/generate"
 LEAKY = insight_reply(narrative="Ada 12 siswa yang bingung.")
 
 
@@ -58,23 +54,6 @@ def _insight_body(**changes: Any) -> dict[str, Any]:
                 ],
             },
         ],
-    }
-    return {**body, **changes}
-
-
-def _summary_body(**changes: Any) -> dict[str, Any]:
-    body = {
-        "mission_title": "Gaya dan Gerak",
-        "concepts": [
-            {"name": "Gaya gesek", "outcome": "mastered"},
-            {
-                "name": "Kelembaman",
-                "outcome": "misconception",
-                "misconception_statement": "Benda berat selalu jatuh lebih cepat",
-                "resolved_in_session": False,
-            },
-        ],
-        "evaluation_summary": "Siswa menjelaskan gesekan dengan contoh lantai dan es.",
     }
     return {**body, **changes}
 
@@ -137,34 +116,14 @@ def test_class_insight_rejects_an_empty_class_and_inconsistent_counts(
     assert llm.requests == []
 
 
-def test_parent_summary_returns_the_model_text(client: TestClient, llm: ScriptedLLM) -> None:
-    llm.queue(summary_reply())
-    payload = client.post(SUMMARY_URL, json=_summary_body(), headers=AUTH).json()
-    assert payload["result"] == {"content": SUMMARY, "source": "model"}
-    assert [i["purpose"] for i in payload["invocations"]] == ["parent_summary"]
-    assert payload["warnings"] == []
-
-
-def test_parent_summary_falls_back_to_the_template(client: TestClient, llm: ScriptedLLM) -> None:
-    llm.queue(summary_reply("Nilai Ananda bagus."), summary_reply("Nilai Ananda bagus."))
-    payload = client.post(SUMMARY_URL, json=_summary_body(), headers=AUTH).json()
-    assert payload["result"]["source"] == "template"
-    assert "Gaya gesek" in payload["result"]["content"]
-    assert payload["warnings"] == ["summary_retried", "summary_template"]
-
-
-def test_parent_summary_outage_is_a_503(client: TestClient, llm: ScriptedLLM) -> None:
-    llm.queue(TransientLLMError("503"), TransientLLMError("503"))
-    response = client.post(SUMMARY_URL, json=_summary_body(), headers=AUTH)
-    assert response.status_code == 503
-    assert [i["status"] for i in response.json()["invocations"]] == ["error", "error"]
-
-
-def test_parent_summary_needs_a_known_outcome(client: TestClient) -> None:
-    body = _summary_body(concepts=[{"name": "Gaya gesek", "outcome": "excellent"}])
-    assert client.post(SUMMARY_URL, json=body, headers=AUTH).status_code == 422
-
-
 def test_the_service_key_is_required(client: TestClient) -> None:
     assert client.post(INSIGHT_URL, json=_insight_body()).status_code == 401
-    assert client.post(SUMMARY_URL, json=_summary_body()).status_code == 401
+
+
+def test_retired_parent_endpoint_is_absent(client: TestClient, llm: ScriptedLLM) -> None:
+    assert client.post("/v1/s5/parent-summaries/generate", json={}, headers=AUTH).status_code == 404
+    schema = client.get("/openapi.json").json()
+    assert "/v1/s5/parent-summaries/generate" not in schema["paths"]
+    assert not any(name.startswith("Parent") for name in schema["components"]["schemas"])
+    assert "parent_summary" not in schema["components"]["schemas"]["AiPurpose"]["enum"]
+    assert llm.requests == []

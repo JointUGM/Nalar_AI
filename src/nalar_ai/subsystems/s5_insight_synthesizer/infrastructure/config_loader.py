@@ -3,25 +3,13 @@ from typing import Any
 
 import yaml
 
-from nalar_ai.shared.enums import ConceptOutcome
 from nalar_ai.shared.errors import ConfigurationError
 from nalar_ai.subsystems.s5_insight_synthesizer.domain.config import SynthesizerConfig
 from nalar_ai.subsystems.s5_insight_synthesizer.domain.insight import InsightLimits
 from nalar_ai.subsystems.s5_insight_synthesizer.domain.numbers import NumberLexicon
-from nalar_ai.subsystems.s5_insight_synthesizer.domain.summary import (
-    ParentConcept,
-    SummaryRules,
-    SummaryTemplate,
-    content_problems,
-)
+from nalar_ai.subsystems.s5_insight_synthesizer.domain.teaching_plan import PlanLimits
 
 DEFAULT_CONFIG_PATH = Path(__file__).resolve().parents[1] / "config" / "synthesizer.yaml"
-
-# Renders every template sentence once, so the loader can guard the whole text.
-_SAMPLE = (
-    ParentConcept("gaya", ConceptOutcome.MASTERED, None, False),
-    ParentConcept("gerak", ConceptOutcome.DEVELOPING, None, False),
-)
 
 
 def load_synthesizer_config(path: Path = DEFAULT_CONFIG_PATH) -> SynthesizerConfig:
@@ -31,26 +19,12 @@ def load_synthesizer_config(path: Path = DEFAULT_CONFIG_PATH) -> SynthesizerConf
     )
     try:
         insight = InsightLimits(**raw["insight"])
+        teaching_plan = PlanLimits(**raw["teaching_plan"])
     except (TypeError, ValueError) as error:
-        raise ConfigurationError(f"invalid S5 insight limits: {error}") from error
-    summary = raw["summary"]
-    rules = SummaryRules.build(
-        min_words=int(summary["min_words"]),
-        max_words=int(summary["max_words"]),
-        banned_terms=summary["banned_terms"],
-        comparison_phrases=summary["comparison_phrases"],
-        banned_term_exceptions=summary.get("banned_term_exceptions", {}),
-    )
-    template = SummaryTemplate(**{k: str(v) for k, v in summary["template"].items()})
-    problems = content_problems(template.render(_SAMPLE), rules)
-    if problems:
-        raise ConfigurationError(
-            f"synthesizer.yaml template fails the guard: {'; '.join(problems)}"
-        )
+        raise ConfigurationError(f"invalid S5 limits: {error}") from error
     return SynthesizerConfig(
         version=int(raw["version"]),
         numbers=numbers,
         insight=insight,
-        summary=rules,
-        template=template,
+        teaching_plan=teaching_plan,
     )

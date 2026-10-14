@@ -82,7 +82,6 @@ class Settings(BaseSettings):
 
     # S5 policy (design doc s5 §9). Worst case per request: 2 tries x attempts x timeout.
     s5_insight_timeout_seconds: float = 45.0
-    s5_summary_timeout_seconds: float = 20.0
     s5_max_attempts: int = 2
 
 

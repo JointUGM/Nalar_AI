@@ -8,7 +8,6 @@ from nalar_ai.platform.llm.gateway import CallPolicy
 @dataclass(frozen=True, slots=True)
 class SynthesizerPolicy:
     insight_timeout_s: float
-    summary_timeout_s: float
     max_attempts: int
 
     def insight_call(self) -> CallPolicy:
@@ -20,9 +19,9 @@ class SynthesizerPolicy:
             lane="scoring",
         )
 
-    def summary_call(self) -> CallPolicy:
+    def plan_call(self) -> CallPolicy:
         return CallPolicy(
-            timeout_s=self.summary_timeout_s,
+            timeout_s=self.insight_timeout_s,  # same worst case as the insight for the backend
             max_attempts=self.max_attempts,
             max_repairs=0,
             lane="scoring",

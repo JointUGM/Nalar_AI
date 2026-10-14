@@ -1,4 +1,4 @@
-"""A scored Gaya dan Gerak class, one student's results and scripted S5 model replies."""
+"""A scored Gaya dan Gerak class and scripted S5 model replies."""
 
 import json
 from dataclasses import replace
@@ -8,7 +8,6 @@ from uuid import UUID
 from nalar_ai.platform.llm.fakes import ScriptedLLM
 from nalar_ai.platform.llm.gateway import LLMGateway
 from nalar_ai.platform.prompts.registry import PromptRegistry
-from nalar_ai.shared.enums import ConceptOutcome
 from nalar_ai.subsystems.s5_insight_synthesizer.application.policy import SynthesizerPolicy
 from nalar_ai.subsystems.s5_insight_synthesizer.domain.counts import (
     ClassCounts,
@@ -17,10 +16,6 @@ from nalar_ai.subsystems.s5_insight_synthesizer.domain.counts import (
 )
 from nalar_ai.subsystems.s5_insight_synthesizer.domain.insight import InsightLimits
 from nalar_ai.subsystems.s5_insight_synthesizer.domain.numbers import NumberLexicon
-from nalar_ai.subsystems.s5_insight_synthesizer.domain.summary import (
-    ParentConcept,
-    ParentSummaryInput,
-)
 from nalar_ai.subsystems.s5_insight_synthesizer.infrastructure.config_loader import (
     load_synthesizer_config,
 )
@@ -111,38 +106,6 @@ def insight_reply(**changes: Any) -> str:
     )
 
 
-def make_parent_input(**changes: Any) -> ParentSummaryInput:
-    data = ParentSummaryInput(
-        mission_title="Gaya dan Gerak",
-        concepts=(
-            ParentConcept("Gaya gesek", ConceptOutcome.MASTERED, None, False),
-            ParentConcept(
-                "Kelembaman",
-                ConceptOutcome.MISCONCEPTION,
-                "Benda berat selalu jatuh lebih cepat",
-                False,
-            ),
-        ),
-        evaluation_summary="Siswa menjelaskan gesekan dengan contoh lantai dan es.",
-    )
-    return replace(data, **changes)
-
-
-SUMMARY = (
-    "Ananda sudah memahami bahwa gesekan membuat benda yang meluncur perlahan berhenti, dan "
-    "Ananda bisa menjelaskannya dengan contoh lantai dan es. Ananda masih mengembangkan "
-    "pemahaman tentang kelembaman: Ananda masih mengira benda yang lebih berat selalu jatuh "
-    "lebih cepat. Ini langkah yang wajar dalam belajar sains. Di rumah, Anda bisa mengajak "
-    "Ananda menjatuhkan selembar kertas dan sebuah buku bersama-sama, lalu mengulanginya dengan "
-    "kertas yang sudah diremas. Tanyakan apa yang Ananda lihat dan mengapa hasilnya berbeda. "
-    "Dengarkan alasannya tanpa terburu-buru memberi jawaban."
-)
-
-
-def summary_reply(text: str = SUMMARY) -> str:
-    return json.dumps({"summary": text})
-
-
 CONFIG = load_synthesizer_config()
 
 
@@ -156,4 +119,4 @@ def make_gateway(llm: ScriptedLLM) -> LLMGateway:
 
 
 def make_policy() -> SynthesizerPolicy:
-    return SynthesizerPolicy(insight_timeout_s=5.0, summary_timeout_s=5.0, max_attempts=2)
+    return SynthesizerPolicy(insight_timeout_s=5.0, max_attempts=2)
