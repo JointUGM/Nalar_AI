@@ -221,11 +221,11 @@ class NextTurnUseCase:
         warnings: list[str],
     ) -> ProbeDecision:
         if classification.source is ClassificationSource.PREFILTER:
-            return self._verbatim(plan, classification, MoveSource.PREFILTER)
+            return self._verbatim(command.pack, plan, classification, MoveSource.PREFILTER)
         if command.mode is PlannerMode.TABLE:
             # Table mode is the latency fallback (design R-S3-1): the approved default
             # question verbatim, no writer call (Sonnet misses the budget, DECISIONS P9).
-            return self._verbatim(plan, classification, MoveSource.DEFAULT)
+            return self._verbatim(command.pack, plan, classification, MoveSource.DEFAULT)
         choice = await self._choose.execute(
             command.pack.writer_view(),
             view,
@@ -241,12 +241,12 @@ class NextTurnUseCase:
                 if choice is ChoiceFailure.ERROR
                 else MoveSource.FALLBACK_INVALID
             )
-            return self._verbatim(plan, classification, source)
+            return self._verbatim(command.pack, plan, classification, source)
         checked = validate_choice(choice, plan)
         if isinstance(checked, Rejection):
             warnings.append("choice_fallback")
             logger.info("s3 choice rejected request_id=%s: %s", ledger.request_id, checked.problem)
-            return self._verbatim(plan, classification, MoveSource.FALLBACK_INVALID)
+            return self._verbatim(command.pack, plan, classification, MoveSource.FALLBACK_INVALID)
 
         source = self._move_source(plan)
         reason = (
@@ -257,6 +257,7 @@ class NextTurnUseCase:
                 answer_type=classification.answer_type,
                 move_source=source,
                 coverage_forced=plan.coverage_forced,
+                concept=self._concept_name(command.pack, plan),
             )
         )
         approved = checked.question.text
@@ -289,7 +290,11 @@ class NextTurnUseCase:
         )
 
     def _verbatim(
-        self, plan: MovePlan, classification: Classification, source: MoveSource
+        self,
+        pack: ContextPack,
+        plan: MovePlan,
+        classification: Classification,
+        source: MoveSource,
     ) -> ProbeDecision:
         question: BankQuestion = plan.default_question
         return ProbeDecision(
@@ -306,9 +311,14 @@ class NextTurnUseCase:
                 answer_type=classification.answer_type,
                 move_source=source,
                 coverage_forced=plan.coverage_forced,
+                concept=self._concept_name(pack, plan),
             ),
             guard_result=GuardResult.NOT_RUN,
         )
+
+    @staticmethod
+    def _concept_name(pack: ContextPack, plan: MovePlan) -> str:
+        return next(t.name for t in pack.targets if t.id == plan.target_concept_id)
 
     @staticmethod
     def _move_source(plan: MovePlan) -> MoveSource:

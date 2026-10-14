@@ -2,7 +2,7 @@
 # Owned by the pedagogy lead. Bump `version` on every change; it is logged with each turn.
 # Phrases are matched as whole words after normalisation (case, punctuation and extra spaces
 # are ignored), so "Kasih tau jawabannya!!" matches "kasih tau jawabannya".
-version: 2
+version: 3
 
 prefilter:
   # An answer this short (after normalisation) is evasive: "", "?", "-", "ok".
@@ -130,8 +130,8 @@ texts:
     Terima kasih sudah mau cerita. Kita berhenti sebentar, ya. Gurumu akan segera
     menghampirimu. Kamu tidak sendirian.
   templates:
-    default: "{move}, karena {answer}."
-    coverage: "{move}: setiap konsep target wajib mendapat satu pertanyaan tantangan."
+    default: "{move} pada konsep {concept}, karena {answer}."
+    coverage: "{move} pada konsep {concept}: setiap konsep target wajib mendapat satu pertanyaan tantangan."
     fallback_error: "{move}: dipakai pertanyaan yang disetujui guru apa adanya, karena AI tidak menjawab tepat waktu."
     fallback_invalid: "{move}: dipakai pertanyaan yang disetujui guru apa adanya, karena pilihan AI tidak lolos pemeriksaan."
   moves:

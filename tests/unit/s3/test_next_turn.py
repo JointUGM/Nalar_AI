@@ -97,7 +97,10 @@ async def test_hybrid_turn_classifies_chooses_and_guards() -> None:
     assert probe_.question_source is QuestionSource.ADAPTED
     assert probe_.move_source is MoveSource.PLANNER
     assert probe_.reason_code is MoveReasonCode.DEFAULT
-    assert probe_.reason == "Contoh pembanding, karena jawaban memuat ide keliru."
+    assert (
+        probe_.reason
+        == "Contoh pembanding pada konsep Kelembaman, karena jawaban memuat ide keliru."
+    )
     assert probe_.guard_result is GuardResult.PASSED
     assert result.coverage == ((T_GESEK, False), (T_LEMBAM, True))
     assert result.warnings == ()
@@ -377,7 +380,9 @@ async def test_coverage_forcing_explains_itself() -> None:
     assert result.probe is not None
     assert result.probe.move is M.TRANSFER
     assert result.probe.target_concept_id == T_GESEK
-    assert result.probe.reason.startswith("Situasi baru: setiap konsep target wajib")
+    assert result.probe.reason.startswith(
+        "Situasi baru pada konsep Gaya gesek: setiap konsep target wajib"
+    )
 
 
 async def test_an_invalid_pack_or_history_is_rejected_before_any_call() -> None:

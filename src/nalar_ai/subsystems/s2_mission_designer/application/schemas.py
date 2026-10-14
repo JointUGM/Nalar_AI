@@ -46,6 +46,14 @@ class SelectTargetsIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     learning_objective: str = Field(min_length=1, max_length=1000)
     concepts: list[ApprovedConceptIn] = Field(min_length=2, max_length=200)
+    # Follow-up missions: these concepts are always targets; the model only fills the rest.
+    preferred_concept_ids: list[UUID] = Field(default_factory=list, max_length=3)
+
+    @model_validator(mode="after")
+    def valid_preferred(self) -> "SelectTargetsIn":
+        if len(set(self.preferred_concept_ids)) != len(self.preferred_concept_ids):
+            raise ValueError("preferred_concept_ids must be unique")
+        return self
 
 
 class SelectTargetsOut(BaseModel):
