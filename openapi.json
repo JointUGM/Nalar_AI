@@ -15,7 +15,8 @@
           "probe_plan",
           "session_evaluation",
           "reflection_generation",
-          "class_map_insight"
+          "class_map_insight",
+          "teaching_plan"
         ],
         "title": "AiPurpose",
         "type": "string"
@@ -1886,6 +1887,34 @@
         "title": "Envelope[SelectTargetsOut]",
         "type": "object"
       },
+      "Envelope_TeachingPlanOut_": {
+        "properties": {
+          "invocations": {
+            "items": {
+              "$ref": "#/components/schemas/InvocationOut"
+            },
+            "title": "Invocations",
+            "type": "array"
+          },
+          "result": {
+            "$ref": "#/components/schemas/TeachingPlanOut"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "result",
+          "invocations",
+          "warnings"
+        ],
+        "title": "Envelope[TeachingPlanOut]",
+        "type": "object"
+      },
       "Envelope_WarmOut_": {
         "properties": {
           "invocations": {
@@ -3212,6 +3241,52 @@
         "title": "NextTurnOut",
         "type": "object"
       },
+      "PlanQuestionIn": {
+        "properties": {
+          "id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "text": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "text"
+        ],
+        "title": "PlanQuestionIn",
+        "type": "object"
+      },
+      "PlanStepOut": {
+        "properties": {
+          "ask": {
+            "title": "Ask",
+            "type": "string"
+          },
+          "phase": {
+            "description": "elicit, contrast, explain",
+            "title": "Phase",
+            "type": "string"
+          },
+          "teacher_action": {
+            "title": "Teacher Action",
+            "type": "string"
+          }
+        },
+        "required": [
+          "phase",
+          "teacher_action",
+          "ask"
+        ],
+        "title": "PlanStepOut",
+        "type": "object"
+      },
       "PlannerMode": {
         "enum": [
           "table",
@@ -3899,6 +3974,140 @@
           "name"
         ],
         "title": "TargetConceptIn",
+        "type": "object"
+      },
+      "TeachingPlanIn": {
+        "description": "Reviewed content only: no student names, ids or counts (AI-4, invariant 8).",
+        "properties": {
+          "concept_name": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Concept Name",
+            "type": "string"
+          },
+          "correct_understanding": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Correct Understanding",
+            "type": "string"
+          },
+          "counter_examples": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 5,
+            "title": "Counter Examples",
+            "type": "array"
+          },
+          "detection_cues": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 5,
+            "title": "Detection Cues",
+            "type": "array"
+          },
+          "learning_objective": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Learning Objective",
+            "type": "string"
+          },
+          "misconception_id": {
+            "format": "uuid",
+            "title": "Misconception Id",
+            "type": "string"
+          },
+          "mission_title": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Mission Title",
+            "type": "string"
+          },
+          "questions": {
+            "description": "Approved bank questions on this concept",
+            "items": {
+              "$ref": "#/components/schemas/PlanQuestionIn"
+            },
+            "maxItems": 8,
+            "title": "Questions",
+            "type": "array"
+          },
+          "statement": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Statement",
+            "type": "string"
+          }
+        },
+        "required": [
+          "mission_title",
+          "learning_objective",
+          "concept_name",
+          "misconception_id",
+          "statement",
+          "correct_understanding"
+        ],
+        "title": "TeachingPlanIn",
+        "type": "object"
+      },
+      "TeachingPlanOut": {
+        "properties": {
+          "check_question": {
+            "title": "Check Question",
+            "type": "string"
+          },
+          "counter_example": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The reviewed counter-example the contrast step uses, copied verbatim",
+            "title": "Counter Example"
+          },
+          "look_for": {
+            "description": "Teacher-only: the reasoning that shows change",
+            "title": "Look For",
+            "type": "string"
+          },
+          "misconception_id": {
+            "format": "uuid",
+            "title": "Misconception Id",
+            "type": "string"
+          },
+          "objective": {
+            "title": "Objective",
+            "type": "string"
+          },
+          "question_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Question Ids",
+            "type": "array"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/PlanStepOut"
+            },
+            "title": "Steps",
+            "type": "array"
+          }
+        },
+        "required": [
+          "misconception_id",
+          "objective",
+          "steps",
+          "counter_example",
+          "check_question",
+          "look_for",
+          "question_ids"
+        ],
+        "title": "TeachingPlanOut",
         "type": "object"
       },
       "TurnAction": {
@@ -5640,6 +5849,116 @@
           }
         },
         "summary": "Class Insight",
+        "tags": [
+          "s5"
+        ]
+      }
+    },
+    "/v1/s5/teaching-plan": {
+      "post": {
+        "description": "Draft a short elicit, contrast, explain and check activity for the next lesson (TC-23).\n\nA teacher-reviewed draft, not a verdict. Fails with `ai_output_invalid` after two drafts\nfail the guard; show the reviewed strategy card instead.",
+        "operationId": "teaching_plan_v1_s5_teaching_plan_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-service-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Service-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TeachingPlanIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_TeachingPlanOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "unauthorized: missing or invalid X-Service-Key"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "payload_too_large"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "invalid_input, document_unreadable, section_too_large or budget_exceeded"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "internal_error"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "ai_output_invalid or model_call_rejected"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "upstream_unavailable"
+          }
+        },
+        "summary": "Teaching Plan",
         "tags": [
           "s5"
         ]

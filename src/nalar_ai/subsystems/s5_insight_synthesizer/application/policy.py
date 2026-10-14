@@ -18,3 +18,11 @@ class SynthesizerPolicy:
             max_repairs=0,
             lane="scoring",
         )
+
+    def plan_call(self) -> CallPolicy:
+        return CallPolicy(
+            timeout_s=self.insight_timeout_s,  # same worst case as the insight for the backend
+            max_attempts=self.max_attempts,
+            max_repairs=0,
+            lane="scoring",
+        )

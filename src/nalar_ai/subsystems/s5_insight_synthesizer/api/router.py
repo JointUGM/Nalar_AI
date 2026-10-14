@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends
 
 from nalar_ai.platform.http.envelope import ERROR_RESPONSES
 from nalar_ai.platform.http.security import require_service_key
-from nalar_ai.subsystems.s5_insight_synthesizer.api import class_insight
+from nalar_ai.subsystems.s5_insight_synthesizer.api import class_insight, teaching_plan
 
 router = APIRouter(
     prefix="/v1/s5",
@@ -11,3 +11,4 @@ router = APIRouter(
     responses=ERROR_RESPONSES,
 )
 router.include_router(class_insight.router)
+router.include_router(teaching_plan.router)
