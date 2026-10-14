@@ -54,21 +54,24 @@ def test_reason_templates() -> None:
             answer_type=AnswerType.CORRECT_UNREASONED,
             move_source=MoveSource.PLANNER,
             coverage_forced=False,
+            concept="Gaya gesek",
         )
-        == "Minta alasan, karena jawaban benar tanpa alasan."
+        == "Minta alasan pada konsep Gaya gesek, karena jawaban benar tanpa alasan."
     )
     forced = texts.reason(
         move=ProbeStrategy.TRANSFER,
         answer_type=AnswerType.MANIPULATION,
         move_source=MoveSource.FIXED_RULE,
         coverage_forced=True,
+        concept="Gaya gesek",
     )
-    assert forced.startswith("Situasi baru: setiap konsep target wajib")
+    assert forced.startswith("Situasi baru pada konsep Gaya gesek: setiap konsep target wajib")
     fallback = texts.reason(
         move=ProbeStrategy.TRANSFER,
         answer_type=AnswerType.UNSURE,
         move_source=MoveSource.FALLBACK_ERROR,
         coverage_forced=True,
+        concept="Gaya gesek",
     )
     assert "tidak menjawab tepat waktu" in fallback
 

@@ -28,6 +28,7 @@ class ProberTexts:
         answer_type: AnswerType,
         move_source: MoveSource,
         coverage_forced: bool,
+        concept: str,
     ) -> str:
         """The plain-language "why this question" for the teacher's report (session_turns.move_reason)."""
         if move_source is MoveSource.FALLBACK_ERROR:
@@ -38,7 +39,11 @@ class ProberTexts:
             template = self.coverage_template
         else:
             template = self.default_template
-        return template.format(move=self.move_labels[move], answer=self.answer_labels[answer_type])
+        return template.format(
+            move=self.move_labels[move],
+            answer=self.answer_labels[answer_type],
+            concept=concept,
+        )
 
 
 @dataclass(frozen=True, slots=True)
