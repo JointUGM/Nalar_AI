@@ -97,6 +97,42 @@ def test_target_selection_repairs_unknown_alias_and_never_returns_invented_conce
     assert len(response.json()["invocations"]) == 2
 
 
+C3 = str(UUID(int=7))
+
+
+def select_body(*preferred: str) -> dict[str, Any]:
+    concepts = [*mission_input()["targets"], {"id": C3, "name": "Berat"}]
+    return {
+        "learning_objective": "Gerak",
+        "concepts": concepts,
+        "preferred_concept_ids": list(preferred),
+    }
+
+
+def test_one_preferred_concept_is_always_selected_even_when_the_model_skips_it(client, llm):
+    llm.queue('{"targets":["c1","c2"]}')
+    response = client.post("/v1/s2/targets/select", json=select_body(C3), headers=HEADERS)
+    assert response.status_code == 200, response.text
+    assert response.json()["result"]["target_concept_ids"] == [C3, C1, C2]
+    assert "required" in llm.requests[0].blocks[-1].text.lower()
+
+
+def test_two_or_three_preferred_concepts_need_no_model_call(client, llm):
+    response = client.post("/v1/s2/targets/select", json=select_body(C2, C3), headers=HEADERS)
+    assert response.status_code == 200, response.text
+    assert response.json()["result"]["target_concept_ids"] == [C2, C3]
+    assert llm.requests == [] and response.json()["invocations"] == []
+
+
+@pytest.mark.parametrize(
+    "preferred", [[str(UUID(int=99))], [C1, C1], [C1, C2, C3, str(UUID(int=99))]]
+)
+def test_invalid_preferred_concepts_are_rejected_before_spending(client, llm, preferred):
+    response = client.post("/v1/s2/targets/select", json=select_body(*preferred), headers=HEADERS)
+    assert response.status_code == 422
+    assert llm.requests == []
+
+
 def test_pending_concepts_and_duplicate_targets_are_rejected_before_spending(client, llm):
     body = mission_input()
     body["targets"][0]["review_status"] = "pending"

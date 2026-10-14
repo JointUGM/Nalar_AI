@@ -70,6 +70,13 @@ class SelectTargetsUseCase:
     async def execute(self, body: SelectTargetsIn, ledger: UsageLedger) -> SelectTargetsOut:
         _unique([c.id for c in body.concepts], "concept")
         aliases = {f"c{i}": c for i, c in enumerate(body.concepts, 1)}
+        by_id = {c.id: a for a, c in aliases.items()}
+        if any(i not in by_id for i in body.preferred_concept_ids):
+            raise InvalidInputError("preferred concept is not in the approved catalog")
+        required = [by_id[i] for i in body.preferred_concept_ids]
+        if len(required) >= 2:
+            # Two or three required concepts already are a complete target set: no model call.
+            return SelectTargetsOut(target_concept_ids=list(body.preferred_concept_ids))
 
         def check(out: SelectionDraft) -> list[str]:
             if len(set(out.targets)) != len(out.targets) or any(
@@ -89,6 +96,7 @@ class SelectTargetsUseCase:
                         for a, c in aliases.items()
                     ],
                 ),
+                "required": ", ".join(required) or "(none)",
             },
             output_model=SelectionDraft,
             semantic_check=check,
@@ -104,7 +112,9 @@ class SelectTargetsUseCase:
             ),
             policy=self._module.generation_policy,
         )
-        return SelectTargetsOut(target_concept_ids=[aliases[a].id for a in out.targets])
+        # The model may skip a required concept; guarantee it here instead of trusting the prompt.
+        chosen = [*required, *(a for a in out.targets if a not in required)][:3]
+        return SelectTargetsOut(target_concept_ids=[aliases[a].id for a in chosen])
 
 
 class DesignMissionUseCase:
