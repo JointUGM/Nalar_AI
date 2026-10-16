@@ -19,7 +19,9 @@ htmlcov/
 
 # Teaching material and eval outputs never go to git
 *.pdf
+*.svg
 evals/**/runs/
 
-# Team rule: markdown (docs, plans, CLAUDE.md, READMEs) stays local and is never pushed
+# Local working notes stay ignored; the public README may be committed.
 *.md
+!README.md
